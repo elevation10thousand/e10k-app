@@ -7,6 +7,13 @@
   var ENTITY_ORDER = ['Real Estate', 'E10K', 'Personal', 'One Cent LLC', 'Two Cent LLC', 'Western Approach LLC', 'Aircraft'];
   var STATUS_ORDER = {'In Progress': 0, 'Blocked': 1, 'Waiting': 2, 'Not Started': 3, 'Done': 9};
   var PRI = {High: 0, Medium: 1, Low: 2};
+  var svg = function (d) { return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'; };
+  var ICONS = {
+    check: svg('<path d="M4 12l5 5L20 6"/>'),
+    list: svg('<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>'),
+    clock: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+    mtn: svg('<path d="M2 20l7-12 4 6 3-4 6 10z"/>')
+  };
 
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -123,10 +130,10 @@
 
   // ---------- rendering ----------
   function tabsFor() {
-    var t = [{k: 'mine', ic: '\u2713', n: 'My Tasks'}];
-    t.push({k: 'all', ic: '\u2630', n: me().owner ? 'All Open' : 'Job Tasks'});
-    t.push({k: 'hours', ic: '\u23F1', n: 'Hours'});
-    t.push({k: 'walks', ic: '\u26F0', n: 'Walkthroughs'});
+    var t = [{k: 'mine', ic: ICONS.check, n: 'My Tasks'}];
+    t.push({k: 'all', ic: ICONS.list, n: me().owner ? 'All Open' : 'Job Tasks'});
+    t.push({k: 'hours', ic: ICONS.clock, n: 'Hours'});
+    t.push({k: 'walks', ic: ICONS.mtn, n: 'Walkthroughs'});
     return t;
   }
 
