@@ -98,7 +98,11 @@
     if (S.queue.length) return flush();
     return api('bootstrap').then(function (r) {
       if (!r.ok) return;
-      S.data = r; save(); render();
+      S.data = r;
+      var seen = ls.get('seen', {}), nf = r.newFor || {};
+      Object.keys(seen).forEach(function (k) { if (nf[k] === undefined) delete seen[k]; });
+      ls.set('seen', seen);
+      save(); render();
     }).catch(function () { if (!quiet) toast('No signal \u2013 showing saved copy'); });
   }
 
