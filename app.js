@@ -183,11 +183,13 @@
   }
 
   // ---------- rendering ----------
+  var EXTRA_TABS = [];
   function tabsFor() {
     var t = [{k: 'mine', ic: ICONS.check, n: 'My Tasks'}];
     t.push({k: 'all', ic: ICONS.list, n: me().owner ? 'All Open' : 'Job Tasks'});
     t.push({k: 'hours', ic: ICONS.clock, n: 'Hours'});
     t.push({k: 'walks', ic: ICONS.mtn, n: 'Walkthroughs'});
+    EXTRA_TABS.forEach(function (x) { t.splice(3, 0, x); });
     return t;
   }
 
@@ -203,6 +205,8 @@
     $('#fab').classList.remove('hidden');
     if (S.tab === 'hours') return renderHours();
     if (S.tab === 'walks') return renderWalks();
+    var ex = EXTRA_TABS.filter(function (x) { return x.k === S.tab; })[0];
+    if (ex) return ex.render();
     renderTasks();
   }
 
@@ -529,6 +533,8 @@
     if (!S.data) return;
     if (S.tab === 'hours') return hoursForm();
     if (S.tab === 'walks') return walkForm();
+    var ex = EXTRA_TABS.filter(function (x) { return x.k === S.tab; })[0];
+    if (ex) return ex.fab();
     taskForm(null);
   };
   window.addEventListener('online', function () { syncBadge(); flush().then(function () { refresh(true); }); });
@@ -544,7 +550,14 @@
   var deep = (location.hash.match(/#task=([A-Za-z0-9\-]+)/) || [])[1];
   if (deep) setTimeout(function () { refresh(true).then(function () { S.tab = 'mine'; render(); openTask(deep); }); }, 300);
 
-  render(); syncBadge();
-  if (TOKEN) { if (S.queue.length) flush(); else refresh(!!S.data); }
+  window.E10K = {
+    $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
+    shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me,
+    addTab: function (t) { EXTRA_TABS.push(t); }
+  };
+  document.addEventListener('DOMContentLoaded', function () {
+    render(); syncBadge();
+    if (TOKEN) { if (S.queue.length) flush(); else refresh(!!S.data); }
+  });
   setInterval(function () { if (!document.hidden) refresh(true); }, 120000);
 })();
