@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="E10K">
+<meta name="robots" content="noindex, nofollow">
+<title>E10K</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+<header id="top">
+  <img src="logo-word.png" alt="E10K" class="logo">
+  <div id="sync" class="sync" title="Sync status"></div>
+</header>
+
+<main id="view"></main>
+
+<button id="fab" class="fab" aria-label="Add">+</button>
+
+<nav id="tabs"></nav>
+
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+  <div class="sheet-bg"></div>
+  <div class="sheet-card"><div id="sheet-body"></div></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js?v=1"></script>
+</body>
+</html>
