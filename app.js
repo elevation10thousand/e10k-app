@@ -3,6 +3,7 @@
  * Offline: last data is cached; changes are queued and sent when signal returns. */
 (function () {
   'use strict';
+  var VAPID = 'BFAxeXlnBFlp_oOaQpYewm8sJ-iqWTjvbwwOuEY1ANtmqSkhi8nvcaIBvyvMzOfz--Kxtk-lTHZQ_IAeymGVruU';
   var API = 'https://script.google.com/macros/s/AKfycbxkbNeFYayitjUo9vF-V76J2NGIWmYLFXSPMoq3ZL9V4y32lXrZ7k5HvqmzHL3HCmUg/exec';
   var ENTITY_ORDER = ['Real Estate', 'E10K', 'Personal', 'One Cent LLC', 'Two Cent LLC', 'Western Approach LLC', 'Aircraft'];
   var STATUS_ORDER = {'In Progress': 0, 'Blocked': 1, 'Waiting': 2, 'Not Started': 3, 'Done': 9};
@@ -133,6 +134,50 @@
     });
   }
 
+  // ---------- phone alerts ----------
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  function pushSupported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  function alertsState() {
+    if (isIOS && !standalone) return 'ios-install';
+    if (!pushSupported()) return 'unsupported';
+    if (Notification.permission === 'denied') return 'blocked';
+    return ls.get('alertsOn', false) && Notification.permission === 'granted' ? 'on' : 'off';
+  }
+  function b64ToBytes(b) {
+    var p = '='.repeat((4 - b.length % 4) % 4), s = atob((b + p).replace(/-/g, '+').replace(/_/g, '/'));
+    var a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a;
+  }
+  function turnOnAlerts() {
+    var st = alertsState();
+    if (st === 'ios-install') return toast('On iPhone: open this in Safari, tap Share \u2192 Add to Home Screen, then open E10K from the icon and turn alerts on there.');
+    if (st === 'unsupported') return toast('This browser can\u2019t do alerts. Use Chrome on Android or Safari on iPhone.');
+    if (st === 'blocked') return toast('Alerts are blocked. Allow notifications for this site in your phone settings, then try again.');
+    Notification.requestPermission().then(function (perm) {
+      if (perm !== 'granted') { toast('Alerts not allowed'); return; }
+      return navigator.serviceWorker.ready.then(function (reg) {
+        return reg.pushManager.getSubscription().then(function (sub) {
+          return sub || reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID)});
+        });
+      }).then(function (sub) {
+        return api('push.subscribe', {sub: sub.toJSON(), device: navigator.userAgent.slice(0, 120)});
+      }).then(function (r) {
+        if (r && r.ok) { ls.set('alertsOn', true); toast('Alerts are on \u2713'); render(); }
+        else toast('Could not turn on alerts');
+      });
+    }).catch(function () { toast('Could not turn on alerts \u2013 try again with signal'); });
+  }
+  function alertsBanner() {
+    var st = alertsState();
+    if (st === 'on' || st === 'unsupported' || ls.get('alertsHide', false)) return '';
+    var msg = st === 'ios-install' ? 'To get task alerts on iPhone, add E10K to your Home Screen from Safari (Share \u2192 Add to Home Screen).'
+      : st === 'blocked' ? 'Alerts are blocked for E10K. Allow notifications in your phone settings.'
+      : 'Get a phone alert when someone gives you a task.';
+    return '<div class="card"><div class="row"><div class="grow"><div class="title">\uD83D\uDD14 Task alerts</div><div class="sub">' + msg + '</div></div></div>' +
+      '<div class="btns" style="margin-top:10px">' + (st === 'off' ? '<button class="btn primary" data-alerts="on">Turn on alerts</button>' : '') +
+      '<button class="btn" data-alerts="hide">Not now</button></div></div>';
+  }
+
   // ---------- rendering ----------
   function tabsFor() {
     var t = [{k: 'mine', ic: ICONS.check, n: 'My Tasks'}];
@@ -185,7 +230,7 @@
     var chips = ['All'].concat(names);
     if (chips.indexOf(S.chip) < 0) S.chip = 'All';
     var q = S.filter.toLowerCase();
-    var html = '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
+    var html = (S.tab === 'mine' ? alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
     if (names.length > 1) html += '<div class="chips">' + chips.map(function (c) {
       return '<button class="chip ' + (S.chip === c ? 'on' : '') + '" data-chip="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>';
     var shown = 0;
@@ -202,6 +247,12 @@
     var qi = $('#q'); qi.oninput = function () { S.filter = qi.value; var pos = qi.selectionStart; renderTasks(); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
   }
 
+  function assignedBy(t) {
+    var m, re = /Assigned (?:to [^|]*? )?by ([A-Za-z]+)/g, last = '';
+    while ((m = re.exec(t.notes || ''))) last = m[1];
+    return last;
+  }
+
   function findTask(id) { return (S.data.tasks || []).find(function (t) { return t.id === id; }); }
 
   function openTask(id) {
@@ -213,6 +264,7 @@
       '<div class="kv">Status <b>' + esc(t.status) + '</b>' + (t.due ? ' \u00b7 Due <b>' + esc(t.due) + '</b>' : '') +
       (t.completed ? ' \u00b7 Done <b>' + esc(t.completed) + '</b>' : '') + '</div>' +
       (t.phase ? '<div class="kv">' + esc(t.phase) + '</div>' : '') +
+      (assignedBy(t) ? '<div class="kv">Assigned by <b>' + esc(assignedBy(t)) + '</b></div>' : '') +
       (t.notes ? '<div class="notes">' + esc(t.notes) + '</div>' : '') +
       '<div class="btns">' +
       (t.status === 'Not Started' ? '<button class="btn go" data-act="start">Start</button>' : '') +
@@ -269,15 +321,19 @@
     var jobs = S.data.jobs.map(function (j) { return j.name; });
     var html = '<h2>' + (isNew ? 'New task' : 'Edit task') + '</h2>' +
       '<label>Task</label><textarea id="f-task" style="min-height:70px">' + esc(t.task || '') + '</textarea>' +
-      (m.owner ? '<label>Business</label><select id="f-entity">' + options(L['Entity'] || ENTITY_ORDER, t.entity) + '</select>' : '') +
-      '<label>Job / deal</label><input id="f-job" list="joblist" value="' + esc(t.job || '') + '" placeholder="Pick a job or type a deal">' +
-      '<datalist id="joblist">' + jobs.map(function (j) { return '<option value="' + esc(j) + '">'; }).join('') + '</datalist>' +
+      (m.owner ? '<label>Business</label><select id="f-entity">' + options(L['Entity'] || ENTITY_ORDER, t.entity) + '</select>' +
+        '<label>Job / deal</label><input id="f-job" list="joblist" value="' + esc(t.job || '') + '" placeholder="Pick a job or type a deal">' +
+        '<datalist id="joblist">' + jobs.map(function (j) { return '<option value="' + esc(j) + '">'; }).join('') + '</datalist>'
+      : '<label>Job</label><select id="f-job">' + options(jobs, t.job || ls.get('lastJob', ''), true) + '</select>') +
       '<label>Area / room</label><input id="f-area" value="' + esc(t.area || '') + '">' +
       (m.owner ? '<div class="two"><div><label>Who</label><select id="f-owner">' + options(L['Owner'] || S.data.people, t.owner) + '</select></div>' +
         '<div><label>Priority</label><select id="f-pri">' + options(L['Priority'] || ['High', 'Medium', 'Low'], t.priority) + '</select></div></div>' +
         '<div class="two"><div><label>Due</label><input type="date" id="f-due" value="' + usToIso(t.due) + '"></div>' +
         '<div><label>Status</label><select id="f-status">' + options(L['Status'], t.status) + '</select></div></div>' +
-        '<label>Phase / category</label><select id="f-phase">' + options(L['Phase / Category'], t.phase, true) + '</select>' : '') +
+        '<label>Phase / category</label><select id="f-phase">' + options(L['Phase / Category'], t.phase, true) + '</select>'
+      : (isNew ? '<div class="two"><div><label>Who</label><select id="f-owner">' + options(S.data.people, m.name) + '</select></div>' +
+        '<div><label>Priority</label><select id="f-pri">' + options(['High', 'Medium', 'Low'], 'Medium') + '</select></div></div>' +
+        '<label>Due</label><input type="date" id="f-due">' : '')) +
       (isNew || !m.owner ? '' : '<label>Notes</label><textarea id="f-notes">' + esc(t.notes || '') + '</textarea>') +
       (isNew ? '<label>Notes</label><textarea id="f-notes" placeholder="Optional"></textarea>' : '') +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
@@ -288,6 +344,9 @@
       if (m.owner) {
         f.entity = $('#f-entity').value; f.owner = $('#f-owner').value; f.priority = $('#f-pri').value;
         f.due = isoToUs($('#f-due').value); f.status = $('#f-status').value; f.phase = $('#f-phase').value;
+      } else if (isNew) {
+        f.owner = $('#f-owner').value; f.priority = $('#f-pri').value; f.due = isoToUs($('#f-due').value);
+        if (!f.job) return toast('Pick the job');
       }
       if ($('#f-notes')) f.notes = $('#f-notes').value.trim();
       if (isNew) {
@@ -435,6 +494,8 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-tab]');
     if (b) { S.tab = b.getAttribute('data-tab'); ls.set('tab', S.tab); S.chip = 'All'; S.filter = ''; window.scrollTo(0, 0); return render(); }
+    var al = e.target.closest('[data-alerts]');
+    if (al) { if (al.getAttribute('data-alerts') === 'on') turnOnAlerts(); else { ls.set('alertsHide', true); render(); } return; }
     var c = e.target.closest('[data-chip]'); if (c) { S.chip = c.getAttribute('data-chip'); return renderTasks(); }
     var t = e.target.closest('[data-task]'); if (t) return openTask(t.getAttribute('data-task'));
     var a = e.target.closest('#sheet [data-act]'); if (a && sheetHandler) return sheetHandler(a.getAttribute('data-act'));
@@ -450,7 +511,14 @@
   window.addEventListener('offline', syncBadge);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(true); });
 
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (e.data && e.data.openTask) refresh(true).then(function () { openTask(e.data.openTask); });
+    });
+  }
+  var deep = (location.hash.match(/#task=([A-Za-z0-9\-]+)/) || [])[1];
+  if (deep) setTimeout(function () { refresh(true).then(function () { S.tab = 'mine'; render(); openTask(deep); }); }, 300);
 
   render(); syncBadge();
   if (TOKEN) { if (S.queue.length) flush(); else refresh(!!S.data); }

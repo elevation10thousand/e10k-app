@@ -1,8 +1,9 @@
-// E10K service worker: keeps the app shell on the phone so it opens with no signal.
+// E10K service worker: keeps the app shell on the phone so it opens with no signal,
+// and shows phone alerts (web push) sent by Sam's server.
 // Data calls (script.google.com) are never cached here; the app keeps its own copy.
-var CACHE = 'e10k-shell-v3';
-var SHELL = ['./', 'index.html', 'app.css?v=3', 'app.js?v=3', 'manifest.webmanifest',
-  'logo-word.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png'];
+var CACHE = 'e10k-shell-v4';
+var SHELL = ['./', 'index.html', 'app.css?v=4', 'app.js?v=4', 'manifest.webmanifest',
+  'logo-word.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png', 'badge-72.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
@@ -23,6 +24,30 @@ self.addEventListener('fetch', function (e) {
     caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
     return r;
   }).catch(function () {
-    return caches.match(e.request, {ignoreSearch: false}).then(function (r) { return r || caches.match('index.html'); });
+    return caches.match(e.request).then(function (r) { return r || caches.match('index.html'); });
+  }));
+});
+
+self.addEventListener('push', function (e) {
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (x) { d = {title: 'E10K', body: e.data ? e.data.text() : ''}; }
+  e.waitUntil(self.registration.showNotification(d.title || 'E10K', {
+    body: d.body || '', tag: d.tag || 'e10k', renotify: true,
+    icon: 'icon-192.png', badge: 'badge-72.png', data: {url: d.url || './'}
+  }));
+});
+
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || './';
+  var task = url.split('#task=')[1] || '';
+  e.waitUntil(self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(function (list) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].url.indexOf(self.registration.scope) === 0) {
+        list[i].postMessage({openTask: task});
+        return list[i].focus();
+      }
+    }
+    return self.clients.openWindow(url);
   }));
 });
