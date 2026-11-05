@@ -76,14 +76,28 @@
           (p.qty ? ' \u00b7 ' + esc(p.qty) : '') + (p.spec ? ' \u00b7 ' + esc(p.spec) : '') + '</div>';
       }).join('') + '</div>';
     }
+    if (A.me().owner) html += '<h3>Cost (parts + labor)</h3><div id="eq-cost">' + costHtml(EQ.hist[key]) + '</div>';
     html += '<h3>History</h3><div id="eq-hist">' + histHtml(EQ.hist[key]) + '</div>';
     $('#view').innerHTML = html;
     if (!noFetch && navigator.onLine) {
       A.api('equip.history', {machine: key}).then(function (r) {
         if (!r.ok) return; EQ.hist[key] = r;
         var el = $('#eq-hist'); if (el && EQ.open === key) el.innerHTML = histHtml(r);
+        var ec = $('#eq-cost'); if (ec && EQ.open === key) ec.innerHTML = costHtml(r);
       }).catch(function () {});
     }
+  }
+
+  function money(n) { return '$' + Math.round(n || 0).toLocaleString(); }
+  function costHtml(r) {
+    if (!r || !r.costs) return '<div class="empty" style="padding:14px">Loading\u2026</div>';
+    var c = r.costs;
+    if (!c.years.length) return '<div class="empty" style="padding:14px">No parts or labor logged yet.</div>';
+    return '<div class="card">' + c.years.map(function (y) {
+      return '<div class="row" style="margin:4px 0"><div class="grow"><b>' + esc(y.year) + '</b> <span class="sub">' + y.services + ' service' + (y.services === 1 ? '' : 's') +
+        ', ' + y.repairs + ' repair' + (y.repairs === 1 ? '' : 's') + '</span><div class="sub">Parts ' + money(y.parts) + ' \u00b7 Labor ' +
+        (Math.round(y.laborHrs * 10) / 10) + ' hrs (' + money(y.laborCost) + ')</div></div><span class="pill">' + money(y.total) + '</span></div>';
+    }).join('') + (c.years.length > 1 ? '<div class="kv" style="margin-top:8px">All years: <b>' + money(c.lifetime.total) + '</b></div>' : '') + '</div>';
   }
 
   function histHtml(r) {
