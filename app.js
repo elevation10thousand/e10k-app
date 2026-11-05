@@ -26,7 +26,12 @@
   // ---------- token ----------
   function readToken() {
     var m = location.hash.match(/[#&]t=([A-Za-z0-9_\-]{24,})/);
-    if (m) { ls.set('token', m[1]); return m[1]; }
+    if (m) {
+      if (ls.get('token', null) !== m[1]) {   // new person on this phone: drop the old copy
+        ['data', 'hours', 'walks', 'queue', 'tab'].forEach(function (k) { localStorage.removeItem('e10k.' + k); });
+      }
+      ls.set('token', m[1]); return m[1];
+    }
     return ls.get('token', null);
   }
   var TOKEN = readToken();
