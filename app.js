@@ -193,7 +193,8 @@
     var tabs = tabsFor();
     if (!tabs.some(function (t) { return t.k === S.tab; })) S.tab = 'mine';
     $('#tabs').innerHTML = tabs.map(function (t) {
-      return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + '</span>' + t.n + '</button>';
+      var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' : '';
+      return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
     }).join('');
     $('#fab').classList.remove('hidden');
     if (S.tab === 'hours') return renderHours();
@@ -204,7 +205,10 @@
   function taskCard(t) {
     var where = [t.job, t.area].filter(Boolean).join(' \u00b7 ') || t.entity;
     var pill = esc(t.status) + (t.due ? ' \u00b7 ' + shortD(t.due) : '');
-    return '<div class="card tap ' + (t.status === 'Done' ? 'done' : '') + '" data-task="' + esc(t.id) + '"><div class="row">' +
+    var nw = isNewFor(t);
+    return '<div class="card tap ' + (t.status === 'Done' ? 'done' : '') + (nw ? ' new' : '') + '" data-task="' + esc(t.id) + '">' +
+      (nw ? '<div class="newtag">NEW' + (S.data.newFor[t.id] ? ' \u00b7 from ' + esc(S.data.newFor[t.id]) : '') + '</div>' : '') +
+      '<div class="row">' +
       '<span class="dot ' + esc(t.priority) + '"></span>' +
       '<div class="grow"><div class="title">' + esc(t.task) + '</div><div class="sub">' + esc(where) +
       (S.tab === 'all' && t.owner ? ' \u00b7 ' + esc(t.owner) : '') + '</div></div>' +
@@ -234,9 +238,14 @@
     if (names.length > 1) html += '<div class="chips">' + chips.map(function (c) {
       return '<button class="chip ' + (S.chip === c ? 'on' : '') + '" data-chip="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>';
     var shown = 0;
+    if (S.tab === 'mine' && S.chip === 'All' && !q) {
+      var fresh = sortTasks(list.filter(isNewFor));
+      if (fresh.length) { shown += fresh.length; html += '<h3 class="newh">New for you (' + fresh.length + ')</h3>' + fresh.map(taskCard).join(''); }
+    }
     names.forEach(function (g) {
       if (S.chip !== 'All' && S.chip !== g) return;
       var items = sortTasks(groups[g].filter(function (t) {
+        if (S.tab === 'mine' && S.chip === 'All' && !q && isNewFor(t)) return false;
         return !q || (t.task + ' ' + t.job + ' ' + t.area + ' ' + t.notes + ' ' + t.owner).toLowerCase().indexOf(q) >= 0; }));
       if (!items.length) return;
       shown += items.length;
@@ -253,11 +262,22 @@
     return last;
   }
 
+  function isNewFor(t) {
+    var nf = (S.data && S.data.newFor) || {}, seen = ls.get('seen', {});
+    return t && nf[t.id] !== undefined && !seen[t.id] && t.status !== 'Done';
+  }
+  function newCount() { return (S.data && S.data.tasks || []).filter(isNewFor).length; }
+  function markSeen(t) {
+    var seen = ls.get('seen', {}); seen[t.id] = 1; ls.set('seen', seen);
+    enqueue('task.seen', {id: t.id});
+  }
+
   function findTask(id) { return (S.data.tasks || []).find(function (t) { return t.id === id; }); }
 
   function openTask(id) {
     var t = findTask(id); if (!t) return;
     var m = me();
+    if (isNewFor(t)) { markSeen(t); setTimeout(render, 0); }
     var html = '<h2>' + esc(t.task) + '</h2>' +
       '<div class="kv">' + esc([t.entity, t.job, t.area].filter(Boolean).join(' \u00b7 ')) + '</div>' +
       '<div class="kv">Owner <b>' + esc(t.owner || '-') + '</b> \u00b7 Priority <b>' + esc(t.priority || '-') + '</b></div>' +

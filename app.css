@@ -73,3 +73,10 @@ input[type=time], input[type=date] { min-height: 44px; }
 .signin { text-align: center; padding: 50px 20px; color: var(--dim); }
 .signin img { width: 70%; max-width: 320px; margin-bottom: 30px; }
 .tag { font-size: 11px; letter-spacing: 3px; color: var(--dim); text-align: center; margin: 30px 0 10px; }
+.card.new { border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.12); background: #1a1a1a; }
+.newtag { display: inline-block; font: 700 11px var(--sans); letter-spacing: 1.5px; background: #fff; color: #000;
+  border-radius: 6px; padding: 2px 7px; margin-bottom: 6px; }
+h3.newh { color: #fff; }
+nav#tabs button .ic { position: relative; }
+.badge { position: absolute; top: -4px; margin-left: -6px; background: var(--red); color: #fff; font: 700 11px var(--sans);
+  border-radius: 9px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; }
