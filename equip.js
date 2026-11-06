@@ -170,7 +170,7 @@
   function hoursField(m, id) {
     return '<label>Hour meter</label><input id="' + id + '" inputmode="decimal" placeholder="' + (m.hours !== null && m.hours !== undefined ? 'last: ' + fmtH(m.hours) : 'e.g. 2231.5') + '">';
   }
-  function after(msg) { A.closeSheet(); toast(msg); setTimeout(function () { load(true).then(function () { if (EQ.open) delete EQ.hist[EQ.open]; render(); }); }, 4000); }
+  function after(msg) { A.closeSheet(); render(true); toast(msg); setTimeout(function () { load(true).then(function () { if (EQ.open) delete EQ.hist[EQ.open]; render(); }); }, 4000); }
 
   function hoursForm(m) {
     A.sheet('<h2>' + esc(m.model) + '</h2>' + hoursField(m, 'eq-h') +
