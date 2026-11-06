@@ -199,7 +199,9 @@
     var tabs = tabsFor();
     if (!tabs.some(function (t) { return t.k === S.tab; })) S.tab = 'mine';
     $('#tabs').innerHTML = tabs.map(function (t) {
-      var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' : '';
+      var nf = ((S.data && S.data.flags) || []).length;
+      var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' :
+        (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' : '');
       return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
     }).join('');
     $('#fab').classList.remove('hidden');
@@ -218,6 +220,15 @@
   };
   var FLAG_ORDER = {DOWN: 0, Problem: 1, Watch: 2};
   function renderFlags() {
+    $('#flags').innerHTML = '';
+    var eb = document.querySelector('[data-tab=equip] .ic');
+    if (eb) {
+      var old = eb.querySelector('.badge'); if (old) old.remove();
+      var n = ((S.data && S.data.flags) || []).length;
+      if (n) eb.insertAdjacentHTML('beforeend', '<span class="badge" style="background:var(--red)">' + n + '</span>');
+    }
+  }
+  function oldBanner_() {
     var fl = ((S.data && S.data.flags) || []).slice().sort(function (a, b) { return (FLAG_ORDER[a.status] || 0) - (FLAG_ORDER[b.status] || 0); });
     $('#flags').innerHTML = fl.map(function (f) {
       var L = FLAGS[f.status] || FLAGS.Problem;
@@ -541,7 +552,7 @@
       }).join('');
       el.onclick = function (e) {
         var im = e.target.closest('img'); if (!im) return;
-        var v = document.createElement('div');
+        var v = document.createElement('div'); v.id = 'photo-viewer';
         v.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:99;display:flex;align-items:center;justify-content:center';
         v.innerHTML = '<img src="' + im.src + '" style="max-width:100%;max-height:100%">'; v.onclick = function () { v.remove(); };
         document.body.appendChild(v);
@@ -646,11 +657,37 @@
 
   // ---------- sheet ----------
   var sheetHandler = null;
+  // ---------- phone back button ----------
+  // Each screen change made by a tap adds a history entry, so Android's back button steps back
+  // (closes a pop-up, leaves a machine page, returns to the previous tab) instead of leaving the app.
+  var sheetEntry = false, skipPop = 0;
+  function navState() { return {e10k: 1, tab: S.tab, machine: window.E10K && window.E10K.curMachine ? window.E10K.curMachine() : null}; }
+  function navPush() { try { history.pushState(navState(), ''); } catch (e) {} }
+  try { history.replaceState(navState(), ''); } catch (e) {}
+  window.addEventListener('popstate', function (e) {
+    if (skipPop > 0) { skipPop--; return; }
+    var viewer = document.getElementById('photo-viewer'); if (viewer) viewer.remove();
+    if (!$('#sheet').classList.contains('hidden')) { sheetEntry = false; hideSheet(); return; }
+    var st = e.state || {};
+    if (!st.e10k) return;
+    var changed = st.tab && st.tab !== S.tab;
+    if (st.tab) { S.tab = st.tab; ls.set('tab', S.tab); }
+    if (window.E10K && window.E10K.setMachine) window.E10K.setMachine(st.machine || null);
+    window.scrollTo(0, 0);
+    if (changed) { S.chip = 'All'; S.filter = ''; }
+    render();
+  });
+
   function sheet(html, onAct) {
+    if ($('#sheet').classList.contains('hidden') && !sheetEntry) { sheetEntry = true; try { history.pushState(Object.assign(navState(), {sheet: 1}), ''); } catch (e) {} }
     $('#sheet-body').innerHTML = html; sheetHandler = onAct;
     $('#sheet').classList.remove('hidden'); document.body.style.overflow = 'hidden';
   }
-  function closeSheet() { $('#sheet').classList.add('hidden'); document.body.style.overflow = ''; sheetHandler = null; }
+  function hideSheet() { $('#sheet').classList.add('hidden'); document.body.style.overflow = ''; sheetHandler = null; }
+  function closeSheet() {
+    hideSheet();
+    if (sheetEntry) { sheetEntry = false; skipPop++; history.back(); }
+  }
 
   function signedOut() {
     $('#tabs').innerHTML = ''; $('#fab').classList.add('hidden');
@@ -661,7 +698,13 @@
   // ---------- events ----------
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-tab]');
-    if (b) { S.tab = b.getAttribute('data-tab'); ls.set('tab', S.tab); S.chip = 'All'; S.filter = ''; window.scrollTo(0, 0); return render(); }
+    if (b) {
+      var nt = b.getAttribute('data-tab'), same = nt === S.tab;
+      S.tab = nt; ls.set('tab', S.tab); S.chip = 'All'; S.filter = ''; window.scrollTo(0, 0);
+      if (window.E10K.setMachine) window.E10K.setMachine(null);
+      if (!same) navPush(); else try { history.replaceState(navState(), ''); } catch (e) {}
+      return render();
+    }
     var al = e.target.closest('[data-alerts]');
     if (al) { if (al.getAttribute('data-alerts') === 'on') turnOnAlerts(); else { ls.set('alertsHide', true); render(); } return; }
     var fg = e.target.closest('[data-flag]');
@@ -697,7 +740,7 @@
   window.E10K = {
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me,
-    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS
+    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();

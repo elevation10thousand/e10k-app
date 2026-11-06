@@ -329,15 +329,17 @@
         function (k) { A.closeSheet(); EQ.open = k; render(true); });
     }});
 
-  A.openMachine = function (key) { EQ.open = key; window.scrollTo(0, 0); render(); };
+  A.openMachine = function (key) { EQ.open = key; A.navPush(); window.scrollTo(0, 0); render(); };
+  A.curMachine = function () { return A.S.tab === 'equip' ? EQ.open : null; };
+  A.setMachine = function (key) { EQ.open = key || null; };
 
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'equip') return;
     var mc = e.target.closest('[data-machine]');
-    if (mc) { EQ.open = mc.getAttribute('data-machine'); window.scrollTo(0, 0); return render(); }
+    if (mc) { EQ.open = mc.getAttribute('data-machine'); A.navPush(); window.scrollTo(0, 0); return render(); }
     var b = e.target.closest('[data-eq]'); if (!b) return;
     var act = b.getAttribute('data-eq'), m = machine(EQ.open);
-    if (act === 'back') { EQ.open = null; return render(true); }
+    if (act === 'back') { if (history.state && history.state.machine) return history.back(); EQ.open = null; return render(true); }
     if (!m) return;
     if (act === 'hours') return hoursForm(m);
     if (act === 'check') return checkForm(m);
