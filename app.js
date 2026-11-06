@@ -445,14 +445,29 @@
 
   // ---------- walkthroughs ----------
   function renderWalks() {
-    var html = '<h2>Walkthroughs</h2>';
     var list = S.walks || [];
-    if (!list.length) html += '<div class="empty">No walkthroughs yet.<br>Tap + on site to start one.</div>';
-    list.forEach(function (w) {
-      html += '<div class="card"><div class="row"><div class="grow"><div class="title">' + esc(w.job) + '</div>' +
-        '<div class="sub">' + esc(w.date + ' \u00b7 ' + w.by) + (w.photos ? ' \u00b7 ' + w.photos + ' photo' + (w.photos > 1 ? 's' : '') : '') + '</div>' +
-        (w.summary ? '<div class="sub">' + esc(w.summary).slice(0, 160) + '</div>' : '') + '</div>' +
-        (w.pending ? '<span class="pill wait">sending</span>' : (w.processed ? '<span class="pill done">tasks made</span>' : '')) + '</div></div>';
+    var jobs = [];
+    list.forEach(function (w) { if (w.job && jobs.indexOf(w.job) < 0) jobs.push(w.job); });
+    var jf = ls.get('walkJob', '');
+    if (jf && jobs.indexOf(jf) < 0) jf = '';
+    var html = '<h2>Walkthroughs</h2>';
+    if (jobs.length > 1) html += '<div class="chips" id="wjobs"><button class="chip' + (!jf ? ' on' : '') + '" data-wjob="">All jobs</button>' +
+      jobs.map(function (j) { return '<button class="chip' + (j === jf ? ' on' : '') + '" data-wjob="' + esc(j) + '">' + esc(j) + '</button>'; }).join('') + '</div>';
+    var shown = list.filter(function (w) { return !jf || w.job === jf; });
+    if (!shown.length) html += '<div class="empty">No walkthroughs yet.<br>Tap + on site to start one.</div>';
+    var groups = jf ? [jf] : jobs.filter(function (j) { return shown.some(function (w) { return w.job === j; }); });
+    if (shown.some(function (w) { return !w.job; })) groups.push('');
+    groups.forEach(function (g) {
+      if (!jf) html += '<h3>' + esc(g || 'No job') + '</h3>';
+      shown.filter(function (w) { return (w.job || '') === g; }).forEach(function (w) {
+        var i = list.indexOf(w);
+        var pill = w.pending ? '<span class="pill wait">sending</span>' : w.sent ? '<span class="pill done">sent ' + esc(shortD(w.sent)) + '</span>' :
+          (w.processed ? '<span class="pill">tasks made</span>' : '');
+        html += '<div class="card" data-walk="' + i + '" style="cursor:pointer"><div class="row"><div class="grow">' +
+          '<div class="title">' + esc(w.date) + (jf ? '' : '') + ' \u00b7 ' + esc(w.by) + '</div>' +
+          '<div class="sub">' + (w.photos ? w.photos + ' photo' + (w.photos > 1 ? 's' : '') + ' \u00b7 ' : '') + 'tap to read</div>' +
+          (w.summary ? '<div class="sub" style="margin-top:4px">' + esc(firstLine(w.summary)) + '</div>' : '') + '</div>' + pill + '</div></div>';
+      });
     });
     $('#view').innerHTML = html;
     if (navigator.onLine && !S.queue.length && !renderWalks.busy) {
@@ -460,6 +475,81 @@
       api('walk.list').then(function (r) { if (r.ok) { S.walks = r.walks; save(); if (S.tab === 'walks') renderWalksNoFetch(); } })
         .catch(function () {}).then(function () { renderWalks.busy = false; });
     }
+  }
+  function firstLine(t) { var l = String(t).split('\n')[0].replace(/^[-\u2022*]\s*/, ''); return l.length > 110 ? l.slice(0, 107) + '\u2026' : l; }
+  function textBlock(t) {
+    return '<div style="white-space:pre-wrap;line-height:1.45;font-size:15px">' + esc(String(t || '').replace(/\\n/g, '\n')) + '</div>';
+  }
+
+  function walkDetail(w) {
+    var html = '<h2>' + esc(w.job || 'Walkthrough') + '</h2><div class="kv">' + esc(w.date + ' \u00b7 ' + w.by) +
+      (w.sent ? ' \u00b7 update sent ' + esc(shortD(w.sent)) + (w.sentTo ? ' to ' + esc(w.sentTo) : '') : '') + '</div>' +
+      (w.summary ? '<h3>What we saw</h3><div class="card">' + textBlock(w.summary) + '</div>' : '') +
+      (w.actions ? '<h3>What needs done</h3><div class="card">' + textBlock(w.actions) + '</div>' : '') +
+      (w.processed ? '<div class="kv">Sam turned these into tasks.</div>' : '') +
+      (w.photos ? '<h3>Photos</h3><div class="photos" id="wd-ph"><div class="sub">Loading photos\u2026</div></div>' : '') +
+      '<div class="btns"><button class="btn" data-act="x">Close</button>' +
+      (me().owner && !w.pending ? '<button class="btn primary" data-act="mail">' + (w.sent ? 'Send another update' : 'Email update to client') + '</button>' : '') + '</div>';
+    sheet(html, function (act) {
+      if (act === 'mail') return walkEmailForm(w);
+      closeSheet();
+    });
+    if (w.photos && w.id) api('walk.get', {id: w.id}).then(function (r) {
+      var el = $('#wd-ph'); if (!el || !r.ok) return;
+      el.innerHTML = r.photos.map(function (ph) {
+        return ph.data ? '<img src="' + ph.data + '" data-big="1" style="cursor:zoom-in">' : '<a href="' + esc(ph.url) + '" target="_blank" class="sub">Open photo</a>';
+      }).join('');
+      el.onclick = function (e) {
+        var im = e.target.closest('img'); if (!im) return;
+        var v = document.createElement('div');
+        v.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:99;display:flex;align-items:center;justify-content:center';
+        v.innerHTML = '<img src="' + im.src + '" style="max-width:100%;max-height:100%">'; v.onclick = function () { v.remove(); };
+        document.body.appendChild(v);
+      };
+    }).catch(function () { var el = $('#wd-ph'); if (el) el.innerHTML = '<div class="sub">Photos need a signal.</div>'; });
+  }
+
+  function walkDraft(w) {
+    if (w.draft) return w.draft;
+    var first = (w.client || '').split(/[\s(&,]/)[0] || 'there';
+    var b = 'Hi ' + first + ',\n\nHere\'s a quick update from ' + (w.job || 'the job') + ' on ' + shortD(w.date) + ':\n\n';
+    if (w.summary) b += String(w.summary).split('\n').map(function (l) { l = l.replace(/^[-\u2022*]\s*/, '').trim(); return l ? '- ' + l : ''; }).filter(String).join('\n') + '\n\n';
+    if (w.actions) b += 'Next up:\n' + String(w.actions).split('\n').map(function (l) { l = l.replace(/^[-\u2022*]\s*/, '').trim(); return l ? '- ' + l : ''; }).filter(String).join('\n') + '\n\n';
+    return b + 'Let me know if you have any questions.';
+  }
+
+  function walkEmailForm(w) {
+    var sig = '\n\n' + me().name + (me().name === 'Spencer' ? ' Thomas' : '') + '\nElevation 10 Thousand';
+    var body = walkDraft(w);
+    if (body.indexOf('Elevation 10 Thousand') < 0) body += sig;
+    var subj = (w.job || 'Job') + ' update \u2013 ' + shortD(w.date);
+    var html = '<h2>Email update</h2>' +
+      '<label>To' + (w.client ? ' (' + esc(w.client) + ')' : '') + '</label><input id="we-to" type="email" value="' + esc(w.clientEmail || '') + '" placeholder="client@email.com">' +
+      (w.clientEmail ? '' : '<div class="sub">No email on file for this job yet. It will be saved after you send.</div>') +
+      '<label>Subject</label><input id="we-sub" value="' + esc(subj) + '">' +
+      '<label>Message <span class="sub">(edit anything)</span></label><textarea id="we-body" style="min-height:300px">' + esc(body) + '</textarea>' +
+      (w.photos ? '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="we-att" checked style="width:auto"> Attach the ' + w.photos + ' photo' + (w.photos > 1 ? 's' : '') + '</label>' : '') +
+      '<div class="sub" style="margin-top:8px">Send: goes out from Sam\'s email as "Elevation 10 Thousand". You\'re cc\'d and replies come to you. ' +
+      'My email: opens it in your own email app instead (no photos).</div>' +
+      '<div class="btns"><button class="btn" data-act="back">Back</button><button class="btn" data-act="mailto">My email</button><button class="btn ok" data-act="send">Send</button></div>';
+    sheet(html, function (act) {
+      if (act === 'back') return walkDetail(w);
+      var to = $('#we-to').value.trim(), sub = $('#we-sub').value.trim(), b = $('#we-body').value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+/.test(to)) return toast('Enter the client\'s email');
+      if (act === 'mailto') {
+        location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(sub) + '&body=' + encodeURIComponent(b);
+        return;
+      }
+      if (act !== 'send') return;
+      if (!navigator.onLine) return toast('Needs a signal to send');
+      var btn = document.querySelector('#sheet [data-act=send]'); btn.disabled = true; btn.textContent = 'Sending\u2026';
+      api('walk.email', {fields: {id: w.id, to: to, subject: sub, body: b, attach: !!($('#we-att') && $('#we-att').checked)}}).then(function (r) {
+        if (!r.ok) { btn.disabled = false; btn.textContent = 'Send'; return toast(r.error === 'bad_email' ? 'That email doesn\'t look right' : 'Didn\'t send \u2013 try again'); }
+        w.sent = r.sent; w.sentTo = r.to; w.draft = b; if (!w.clientEmail) w.clientEmail = to;
+        (S.walks || []).forEach(function (x) { if (x.job === w.job && !x.clientEmail) x.clientEmail = to; });
+        save(); closeSheet(); render(); toast('Update sent to ' + to);
+      }).catch(function () { btn.disabled = false; btn.textContent = 'Send'; toast('No signal \u2013 try again'); });
+    });
   }
   function renderWalksNoFetch() { renderWalks.busy = true; renderWalks(); renderWalks.busy = false; }
 
@@ -526,6 +616,8 @@
     var al = e.target.closest('[data-alerts]');
     if (al) { if (al.getAttribute('data-alerts') === 'on') turnOnAlerts(); else { ls.set('alertsHide', true); render(); } return; }
     var c = e.target.closest('[data-chip]'); if (c) { S.chip = c.getAttribute('data-chip'); return renderTasks(); }
+    var wj = e.target.closest('[data-wjob]'); if (wj) { ls.set('walkJob', wj.getAttribute('data-wjob')); return renderWalks(); }
+    var wk = e.target.closest('[data-walk]'); if (wk) { var w = (S.walks || [])[+wk.getAttribute('data-walk')]; if (w) return walkDetail(w); }
     var t = e.target.closest('[data-task]'); if (t) return openTask(t.getAttribute('data-task'));
     var a = e.target.closest('#sheet [data-act]'); if (a && sheetHandler) return sheetHandler(a.getAttribute('data-act'));
     if (e.target.classList.contains('sheet-bg')) return closeSheet();
