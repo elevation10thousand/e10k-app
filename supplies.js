@@ -9,6 +9,8 @@
   var $ = A.$, esc = A.esc, ls = A.ls, toast = A.toast;
   var SUP = {items: ls.get('supplies', null), cats: ls.get('supplyCats', ['Fuel', 'Oil & Fluids', 'Filters & Parts', 'Batteries', 'Tools', 'Shop Supplies', 'Safety', 'Materials', 'Other'])};
   var SHOP = {items: ls.get('shopUsed', null), categories: ls.get('shopCats', []), billing: ls.get('shopBilling', ['Contract', 'Change order', 'T&M extra', 'Not billable']), def: 'MISC LABOR AND MATERIALS'};
+  var RC = {items: ls.get('receipts', null), paidWith: ['Company card', 'Paid myself (pay me back)', 'Cash from petty cash', 'Store account'],
+    categories: ls.get('shopCats', []), billing: ['Contract', 'Change order', 'T&M extra', 'Not billable'], folder: '', month: ''};
   var URG = {Out: {ic: '\u26a0\ufe0f', label: 'Out', color: 'var(--red)'}, Low: {ic: '\ud83d\udfe0', label: 'Running low', color: 'var(--orange)'},
     Soon: {ic: '\ud83d\udd35', label: 'Need soon', color: 'var(--blue)'}};
   var RANK = {Out: 0, Low: 1, Soon: 2};
@@ -37,17 +39,22 @@
       if (!r.ok) return; SHOP.items = r.items; ls.set('shopUsed', SHOP.items);
       if (r.categories) { SHOP.categories = r.categories; SHOP.billing = r.billing; SHOP.def = r.defaultCategory; ls.set('shopCats', r.categories); ls.set('shopBilling', r.billing); }
     });
-    return Promise.all([a, b]).then(function () { badge(); if (A.S.tab === 'supplies') render(true); }).catch(function () {});
+    var c = A.api('receipt.list').then(function (r) {
+      if (!r.ok) return; RC.items = r.receipts; RC.paidWith = r.paidWith || RC.paidWith; ls.set('receipts', RC.items);
+      if (r.categories) { RC.categories = r.categories; RC.billing = r.billing; RC.folder = r.folder; }
+    });
+    return Promise.all([a, b, c]).then(function () { badge(); if (A.S.tab === 'supplies') render(true); }).catch(function () {});
   }
 
   function chips() {
     var v = view(), cc = A.me().owner ? checkCount() : 0;
     return '<div class="chips" style="margin:6px 0 2px"><button class="chip' + (v === 'buy' ? ' on' : '') + '" data-supview="buy">\ud83d\uded2 Need to buy' + (count() ? ' (' + count() + ')' : '') + '</button>' +
-      '<button class="chip' + (v === 'shop' ? ' on' : '') + '" data-supview="shop">\ud83d\udd27 Used from shop' + (cc ? ' (' + cc + ' to OK)' : '') + '</button></div>';
+      '<button class="chip' + (v === 'shop' ? ' on' : '') + '" data-supview="shop">\ud83d\udd27 Used from shop' + (cc ? ' (' + cc + ' to OK)' : '') + '</button>' +
+      '<button class="chip' + (v === 'receipts' ? ' on' : '') + '" data-supview="receipts">\ud83e\uddfe Receipts' + (A.me().owner && rcLook() ? ' (' + rcLook() + ' to check)' : '') + '</button></div>';
   }
 
   function render(noFetch) {
-    if (view() === 'shop') renderShop(); else renderBuy();
+    if (view() === 'shop') renderShop(); else if (view() === 'receipts') renderReceipts(); else renderBuy();
     badge();
     if (!noFetch && navigator.onLine) load();
   }
@@ -277,11 +284,143 @@
     }).catch(function () { toast('No signal \u2013 try again'); });
   }
 
+  // ---------- receipts ----------
+  function rcLook() { return (RC.items || []).filter(function (x) { return x.status === 'Needs a look'; }).length; }
+  function rcMonth(x) { var d = String(x.date || x.uploaded || '').split(' ')[0].split('/'); return d.length === 3 ? d[2] + '-' + d[0] : ''; }
+  function monthName(k) { var p = k.split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleDateString(undefined, {month: 'long', year: 'numeric'}); }
+  var RC_ST = {Reading: {t: 'Sam is reading', c: ''}, Logged: {t: 'Logged', c: 'done'}, 'Needs a look': {t: 'Needs a look', c: 'wait'}};
+  function rcCard(x) {
+    var st = RC_ST[x.status] || RC_ST.Reading;
+    return '<div class="card tap" data-rc="' + esc(x.id) + '" style="cursor:pointer' + (x.status === 'Needs a look' && A.me().owner ? ';border:2px solid var(--orange)' : '') + '">' +
+      '<div class="row"><div class="grow"><div class="title">\ud83e\uddfe ' + esc(x.vendor || 'Receipt') + (x.date ? ' <span class="sub">\u00b7 ' + esc(x.date) + '</span>' : '') + '</div>' +
+      '<div class="sub">' + esc([x.job, x.by, x.paidWith].filter(Boolean).join(' \u00b7 ')) + '</div>' +
+      (x.items ? '<div class="sub">' + esc(String(x.items).slice(0, 90)) + '</div>' : '') +
+      '</div><div style="text-align:right">' + (x.total ? '<div class="title" style="font-size:15px">' + esc(money(x.total)) + '</div>' : '') +
+      '<span class="pill ' + st.c + '">' + esc(st.t) + '</span></div></div></div>';
+  }
+  function renderReceipts() {
+    var m = A.me(), items = RC.items;
+    var html = '<h2>Supplies</h2>' + chips() +
+      '<div class="sub" style="margin:4px 2px 10px">Bought something? Tap + and snap the receipt. Sam reads it, logs it to the job and files the photo for reconciling.</div>';
+    if (!items) { $('#view').innerHTML = html + '<div class="empty">Loading\u2026</div>'; return; }
+    if (!items.length) { $('#view').innerHTML = html + '<div class="empty">No receipts yet.<br>Tap + after you buy something.</div>'; return; }
+    var look = items.filter(function (x) { return x.status === 'Needs a look'; }), reading = items.filter(function (x) { return x.status === 'Reading'; });
+    if (m.owner && look.length) html += '<h3>Needs a look</h3>' + look.map(rcCard).join('');
+    if (reading.length) html += '<h3>Sam is reading</h3>' + reading.map(rcCard).join('');
+    var done = items.filter(function (x) { return x.status === 'Logged' || (!m.owner && x.status === 'Needs a look'); });
+    var months = []; done.forEach(function (x) { var k = rcMonth(x); if (k && months.indexOf(k) < 0) months.push(k); });
+    months.sort().reverse();
+    if (m.owner && months.length) {
+      if (!RC.month || months.indexOf(RC.month) < 0) RC.month = months[0];
+      html += '<div class="chips" style="margin-top:12px">' + months.map(function (k) { return '<button class="chip' + (k === RC.month ? ' on' : '') + '" data-rcmonth="' + k + '">' + esc(monthName(k)) + '</button>'; }).join('') + '</div>';
+      var inM = done.filter(function (x) { return rcMonth(x) === RC.month; });
+      var tot = inM.reduce(function (a, x) { return a + (parseFloat(String(x.total).replace(/[^0-9.\-]/g, '')) || 0); }, 0);
+      var byJob = {}; inM.forEach(function (x) { byJob[x.job] = (byJob[x.job] || 0) + (parseFloat(String(x.total).replace(/[^0-9.\-]/g, '')) || 0); });
+      var payback = {}; inM.forEach(function (x) { if (/myself/.test(x.paidWith || '')) payback[x.by] = (payback[x.by] || 0) + (parseFloat(String(x.total).replace(/[^0-9.\-]/g, '')) || 0); });
+      html += '<div class="card"><div class="row"><div class="grow"><b>' + inM.length + ' receipts</b></div><b>' + money(tot) + '</b></div>' +
+        Object.keys(byJob).sort().map(function (j) { return '<div class="row sub"><div class="grow">' + esc(j) + '</div>' + money(byJob[j]) + '</div>'; }).join('') +
+        Object.keys(payback).map(function (p) { return '<div class="row sub" style="color:var(--orange)"><div class="grow">Pay back ' + esc(p) + '</div>' + money(payback[p]) + '</div>'; }).join('') +
+        (RC.folder ? '<div style="margin-top:8px"><a href="' + esc(RC.folder) + '" target="_blank" rel="noopener">Open all receipt photos (Drive)</a></div>' : '') + '</div>';
+      html += inM.map(rcCard).join('');
+    } else if (done.length) html += '<h3>Logged</h3>' + done.slice(0, 40).map(rcCard).join('');
+    $('#view').innerHTML = html;
+  }
+  function findRc(id) { return (RC.items || []).filter(function (x) { return x.id === id; })[0]; }
+
+  function receiptForm() {
+    var jobs = (A.S.data.jobs || []).map(function (j) { return j.name; }), photos = [];
+    var html = '<h2>Receipt</h2>' +
+      '<label>Photo of the receipt</label><input type="file" id="rc-ph" accept="image/*" capture="environment" multiple><div class="photos" id="rc-ph-prev"></div>' +
+      '<div class="sub">Long receipt? Add more than one photo.</div>' +
+      '<label>Which job?</label><select id="rc-job"><option value=""></option>' + jobs.map(function (j) {
+        return '<option' + (j === ls.get('lastJob', '') ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('') + '</select>' +
+      '<label>How did you pay?</label><div class="chips" id="rc-paid" style="flex-wrap:wrap">' + RC.paidWith.map(function (p, i) {
+        return '<button class="chip' + (i === 0 ? ' on' : '') + '" data-paid="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') + '</div>' +
+      '<label>Note (optional)</label><input id="rc-note" placeholder="e.g. half of this was for the shop">' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send</button></div>';
+    var paid = RC.paidWith[0];
+    A.sheet(html, function (act) {
+      if (act !== 'save') return A.closeSheet();
+      if (!photos.length) return toast('Take a photo of the receipt');
+      var f = {job: $('#rc-job').value, paidWith: paid, note: $('#rc-note').value.trim(), photos: photos, clientId: A.uid()};
+      if (!f.job) return toast('Pick the job');
+      ls.set('lastJob', f.job);
+      RC.items = [{id: 'RC-' + f.clientId.slice(0, 8), uploaded: A.todayStr(), by: A.me().name, job: f.job, paidWith: paid, note: f.note, photos: photos.length, status: 'Reading'}].concat(RC.items || []);
+      ls.set('receipts', RC.items);
+      A.enqueue('receipt.add', {fields: f});
+      A.closeSheet(); render(true); toast('Sent \u2013 Sam will read it and log it');
+    });
+    $('#rc-paid').onclick = function (e) {
+      var b = e.target.closest('[data-paid]'); if (!b) return; e.stopPropagation(); paid = b.getAttribute('data-paid');
+      Array.prototype.forEach.call(document.querySelectorAll('#rc-paid .chip'), function (x) { x.classList.toggle('on', x === b); });
+    };
+    $('#rc-ph').onchange = function (e) {
+      Array.prototype.forEach.call(e.target.files, function (file) {
+        A.shrink(file).then(function (d) { photos.push({data: d, type: 'image/jpeg'}); var im = document.createElement('img'); im.src = d; $('#rc-ph-prev').appendChild(im); })
+          .catch(function () { toast('Could not read a photo'); });
+      });
+      e.target.value = '';
+    };
+  }
+
+  function receiptDetail(x) {
+    var m = A.me(), jobs = (A.S.data.jobs || []).map(function (j) { return j.name; });
+    var st = RC_ST[x.status] || RC_ST.Reading;
+    var html = '<h2>\ud83e\uddfe ' + esc(x.vendor || 'Receipt') + '</h2>' +
+      '<div class="kv">' + esc([x.date, x.job, x.by, x.paidWith].filter(Boolean).join(' \u00b7 ')) + ' \u00b7 <b>' + esc(st.t) + '</b>' + (m.owner && x.costId ? ' (' + esc(x.costId) + ')' : '') + '</div>' +
+      (x.total ? '<div class="kv">Total <b>' + esc(money(x.total)) + '</b>' + (x.tax ? ' \u00b7 tax ' + esc(money(x.tax)) : '') + (x.receiptNo ? ' \u00b7 #' + esc(x.receiptNo) : '') + (x.card ? ' \u00b7 card ' + esc(x.card) : '') + '</div>' : '') +
+      (x.items ? '<div class="notes">' + esc(x.items) + '</div>' : '') +
+      (x.note ? '<div class="sub">' + esc(x.by) + ': ' + esc(x.note) + '</div>' : '') +
+      (x.samNotes ? '<div class="sub">Sam: ' + esc(x.samNotes) + '</div>' : '') +
+      '<div class="photos" id="rc-photos"><div class="sub">Loading photo\u2026</div></div>';
+    if (m.owner) html += '<h3>Fix it</h3><div class="two"><div><label>Job</label><select id="rd-job">' + jobs.map(function (j) { return '<option' + (j === x.job ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label>Total $</label><input id="rd-total" inputmode="decimal" value="' + esc(String(x.total || '').replace(/[$,]/g, '')) + '"></div></div>' +
+      '<div class="two"><div><label>Vendor</label><input id="rd-vendor" value="' + esc(x.vendor || '') + '"></div><div><label>Date</label><input id="rd-date" value="' + esc(x.date || '') + '"></div></div>' +
+      '<div class="two"><div><label>Category</label><select id="rd-cat">' + (RC.categories.length ? RC.categories : ['MISC LABOR AND MATERIALS']).map(function (c) { return '<option' + (c === (x.category || 'MISC LABOR AND MATERIALS') ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label>Billing</label><select id="rd-bill">' + RC.billing.map(function (c) { return '<option' + (c === (x.billing || 'Contract') ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div></div>' +
+      '<label>Note</label><input id="rd-note">' +
+      '<div class="btns"><button class="btn" data-act="reread">Sam read it wrong</button><button class="btn" data-act="delete" style="color:var(--red)">\ud83d\uddd1 Delete</button></div>' +
+      '<div class="btns"><button class="btn" data-act="x">Close</button><button class="btn primary" data-act="save">Save</button></div>';
+    else html += '<div class="btns">' + (x.by === m.name && x.status === 'Reading' ? '<button class="btn" data-act="delete" style="color:var(--red)">\ud83d\uddd1 Delete</button>' : '') + '<button class="btn" data-act="x">Close</button></div>';
+    A.sheet(html, function (act) {
+      if (act === 'x') return A.closeSheet();
+      if (act === 'delete') {
+        if (!confirm('Delete this receipt' + (x.costId ? ' and its job cost line' : '') + '?')) return;
+        return A.api('receipt.remove', {fields: {id: x.id}}).then(function (r) {
+          if (!r.ok) return toast(r.error === 'already_billed' ? 'Already billed to the client \u2013 fix it on the invoice' : 'Didn\u2019t work \u2013 try again');
+          RC.items = RC.items.filter(function (y) { return y.id !== x.id; }); ls.set('receipts', RC.items); A.closeSheet(); render(true); toast('Deleted');
+        }).catch(function () { toast('Needs a signal'); });
+      }
+      if (!m.owner) return;
+      var f = {id: x.id, note: $('#rd-note').value.trim()};
+      if (act === 'reread') { if (!f.note) { $('#rd-note').focus(); return toast('Say what\u2019s wrong so Sam can fix it'); } f.reread = true; x.status = 'Reading'; x.costId = ''; }
+      else { f.job = $('#rd-job').value; f.total = $('#rd-total').value.trim(); f.vendor = $('#rd-vendor').value.trim(); f.date = $('#rd-date').value.trim();
+        f.category = $('#rd-cat').value; f.billing = $('#rd-bill').value;
+        Object.assign(x, {job: f.job, total: f.total, vendor: f.vendor, date: f.date, category: f.category, billing: f.billing}); if (x.status === 'Needs a look' && x.costId) x.status = 'Logged'; }
+      A.api('receipt.update', {fields: f}).then(function (r) {
+        if (!r.ok) return toast(r.error === 'already_billed' ? 'Already billed to the client \u2013 fix it on the invoice' : 'Didn\u2019t save \u2013 try again');
+        ls.set('receipts', RC.items); A.closeSheet(); render(true); toast(f.reread ? 'Sent back to Sam' : 'Saved \u2013 job cost updated');
+      }).catch(function () { toast('Needs a signal'); });
+    });
+    if (navigator.onLine) A.api('receipt.get', {id: x.id}).then(function (r) {
+      var el = $('#rc-photos'); if (!el || !r.ok) return;
+      el.innerHTML = r.photos.map(function (p, i) { return p.data ? '<img src="' + p.data + '" style="width:120px;height:160px">' : '<a class="sub" target="_blank" href="' + esc(r.links[i]) + '">Open photo</a>'; }).join('') +
+        (r.links && r.links[0] ? '<div style="width:100%"><a class="sub" target="_blank" rel="noopener" href="' + esc(r.links[0]) + '">Open full size</a></div>' : '');
+      el.onclick = function (e) {
+        var im = e.target.closest('img'); if (!im) return;
+        var v = document.createElement('div'); v.id = 'photo-viewer';
+        v.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:99;display:flex;align-items:center;justify-content:center';
+        v.innerHTML = '<img src="' + im.src + '" style="max-width:100%;max-height:100%">'; v.onclick = function () { v.remove(); };
+        document.body.appendChild(v);
+      };
+    }).catch(function () {});
+  }
+
   // ---------- wiring ----------
   A.addTab({k: 'supplies', n: 'Supplies', ic: A.svg('<path d="M3 4h2l2.4 11h11.2L21 7H6.2M9 20a1 1 0 1 0 0-.01M18 20a1 1 0 1 0 0-.01"/>'),
     render: function () { render(); },
-    badge: function () { return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() : 0) : ((A.S.data && A.S.data.supplyCount) || 0) + ((A.S.data && A.S.data.shopCheck) || 0); },
-    fab: function () { return view() === 'shop' ? shopForm() : buyForm(); }});
+    badge: function () { return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() + rcLook() : 0) : ((A.S.data && A.S.data.supplyCount) || 0) + ((A.S.data && A.S.data.shopCheck) || 0); },
+    fab: function () { return view() === 'shop' ? shopForm() : view() === 'receipts' ? receiptForm() : buyForm(); }});
 
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'supplies') return;
@@ -289,6 +428,8 @@
     if (v) { ls.set('supView', v.getAttribute('data-supview')); window.scrollTo(0, 0); return render(); }
     var c = e.target.closest('[data-supply]'); if (c) { var x = findBuy(c.getAttribute('data-supply')); if (x) return buyDetail(x); }
     var s = e.target.closest('[data-shop]'); if (s) { var y = findShop(s.getAttribute('data-shop')); if (y) return shopDetail(y); }
+    var rc = e.target.closest('[data-rc]'); if (rc) { var z = findRc(rc.getAttribute('data-rc')); if (z) return receiptDetail(z); }
+    var mo = e.target.closest('[data-rcmonth]'); if (mo) { RC.month = mo.getAttribute('data-rcmonth'); return render(true); }
   });
   // keep the tab badge fresh even when the tab isn't open
   setTimeout(function () { if (navigator.onLine && A.S.data) load(); }, 4000);

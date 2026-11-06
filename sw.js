@@ -1,8 +1,8 @@
 // E10K service worker: keeps the app shell on the phone so it opens with no signal,
 // and shows phone alerts (web push) sent by Sam's server.
 // Data calls (script.google.com) are never cached here; the app keeps its own copy.
-var CACHE = 'e10k-shell-v29';
-var SHELL = ['./', 'index.html', 'app.css?v=13', 'app.js?v=23', 'equip.js?v=16', 'supplies.js?v=4', 'leads.js?v=14', 'chat.js?v=1', 'weather.js?v=1', 'manifest.webmanifest',
+var CACHE = 'e10k-shell-v30';
+var SHELL = ['./', 'index.html', 'app.css?v=13', 'app.js?v=23', 'equip.js?v=16', 'supplies.js?v=5', 'leads.js?v=14', 'chat.js?v=1', 'weather.js?v=1', 'manifest.webmanifest',
   'logo-word.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png', 'badge-72.png'];
 
 self.addEventListener('install', function (e) {
