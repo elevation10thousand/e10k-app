@@ -12,7 +12,7 @@
   var URG = {Out: {ic: '\u26a0\ufe0f', label: 'Out', color: 'var(--red)'}, Low: {ic: '\ud83d\udfe0', label: 'Running low', color: 'var(--orange)'},
     Soon: {ic: '\ud83d\udd35', label: 'Need soon', color: 'var(--blue)'}};
   var RANK = {Out: 0, Low: 1, Soon: 2};
-  var SHOP_ST = {Pricing: {t: 'Sam is pricing', c: ''}, 'Check price': {t: 'Waiting for OK', c: 'wait'}, Logged: {t: 'Logged to job', c: 'done'}, 'Not logged': {t: 'Not logged', c: ''}};
+  var SHOP_ST = {Pricing: {t: 'Sam is pricing', c: ''}, 'Check price': {t: 'Waiting for OK', c: 'wait'}, Logged: {t: 'Logged to job', c: 'done'}, 'Not logged': {t: 'Not logged', c: ''}, 'Returned to shop': {t: 'Put back in shop', c: ''}};
 
   function view() { return ls.get('supView', 'buy'); }
   function count() { return (SUP.items || []).filter(function (x) { return x.status !== 'Got it'; }).length; }
@@ -157,7 +157,7 @@
       (m.owner ? 'you OK it, and then it\u2019s charged to the job.' : 'Spencer or Hanna OK it, and then it\u2019s charged to the job.') + '</div>';
     if (!items) html += '<div class="empty">Loading\u2026</div>';
     else {
-      var groups = [['Check price', m.owner ? 'Needs your OK' : 'Waiting for Spencer or Hanna'], ['Pricing', 'Sam is pricing'], ['Logged', 'Logged to jobs (last 30 days)'], ['Not logged', 'Not logged']];
+      var groups = [['Check price', m.owner ? 'Needs your OK' : 'Waiting for Spencer or Hanna'], ['Pricing', 'Sam is pricing'], ['Logged', 'Logged to jobs (last 30 days)'], ['Returned to shop', 'Put back in shop (not charged)'], ['Not logged', 'Not logged']];
       var any = false;
       groups.forEach(function (g) {
         var list = items.filter(function (x) { return x.status === g[0]; }); if (!list.length) return;
@@ -222,8 +222,12 @@
         '<div class="btns"><button class="btn" data-act="x">Close</button><button class="btn ok" data-act="approve">\u2705 Looks right \u2013 log to job</button></div>'
         : (m.owner && x.total ? '<div class="kv">Logged: <b>' + esc(money(x.total)) + '</b> \u00b7 ' + esc(x.category || '') + ' \u00b7 ' + esc(x.billing || '') + (x.approvedBy ? ' \u00b7 OK\u2019d by ' + esc(x.approvedBy) : '') + '</div>' : '') +
           '<div class="btns"><button class="btn" data-act="x">Close</button></div>');
+    var canUndo = x.status !== 'Returned to shop' && (m.owner || (x.by === m.name && x.status !== 'Logged'));
+    if (canUndo) html += '<div class="btns"><button class="btn" data-act="returned">\u21a9 Put back in shop</button><button class="btn" data-act="delete" style="color:var(--red)">\ud83d\uddd1 Delete</button></div>' +
+      '<div class="sub">Put back in shop: the part wasn\u2019t used, so nothing is charged' + (x.status === 'Logged' ? ' (its job cost line is removed)' : '') + '. Delete: logged by mistake.</div>';
     A.sheet(html, function (act) {
       if (act === 'x') return A.closeSheet();
+      if (act === 'returned' || act === 'delete') return undo(x, act);
       if (!canOk) return;
       var f = {id: x.id, action: act, note: $('#sh-note').value.trim()};
       if (act === 'approve') {
@@ -256,6 +260,21 @@
         document.body.appendChild(v);
       };
     }).catch(function () {});
+  }
+
+  function undo(x, act) {
+    var msg = act === 'delete' ? 'Delete this entry' + (x.status === 'Logged' ? ' and remove its charge from ' + x.job : '') + '?' :
+      'Put it back in the shop? Nothing will be charged to ' + x.job + (x.status === 'Logged' ? ' (the job cost line is removed)' : '') + '.';
+    if (!confirm(msg)) return;
+    if (!navigator.onLine) return toast('Needs a signal');
+    A.api('shop.remove', {fields: {id: x.id, action: act}}).then(function (r) {
+      if (!r.ok) return toast(r.error === 'already_billed' ? 'Already billed to the client' + (r.invoice ? ' (invoice ' + r.invoice + ')' : '') + ' \u2013 fix it on the invoice' : 'Didn\u2019t work \u2013 try again');
+      if (act === 'delete') SHOP.items = (SHOP.items || []).filter(function (y) { return y.id !== x.id; });
+      else { x.status = 'Returned to shop'; x.costId = ''; }
+      ls.set('shopUsed', SHOP.items);
+      A.closeSheet(); render(true);
+      toast(act === 'delete' ? 'Deleted' : 'Put back in shop \u2013 not charged');
+    }).catch(function () { toast('No signal \u2013 try again'); });
   }
 
   // ---------- wiring ----------
