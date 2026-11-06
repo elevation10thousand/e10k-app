@@ -123,6 +123,14 @@
   function shortD(s) { var d = parseD(s); return d ? (d.getMonth() + 1) + '/' + d.getDate() : ''; }
   function isoToUs(v) { if (!v) return ''; var p = v.split('-'); return p[1] + '/' + p[2] + '/' + p[0]; }
   function usToIso(v) { var d = parseD(v); return d ? d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) : ''; }
+  function to24(v) { var m = String(v || '').match(/(\d{1,2}):(\d{2})\s*([AP]M)?/i); if (!m) return ''; var h = +m[1] % 12;
+    if (m[3] && m[3].toUpperCase() === 'PM') h += 12; if (!m[3]) h = +m[1]; return pad(h) + ':' + m[2]; }
+  function nowHM() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function sinceTxt(date, start) {
+    var d = parseD(date), hm = to24(start); if (!d || !hm) return '';
+    d.setHours(+hm.split(':')[0], +hm.split(':')[1]); var min = Math.max(0, Math.round((Date.now() - d) / 60000));
+    return Math.floor(min / 60) + 'h ' + pad(min % 60) + 'm';
+  }
   function to12(v) { if (!v) return ''; var p = v.split(':'), h = +p[0]; return ((h % 12) || 12) + ':' + p[1] + ' ' + (h < 12 ? 'AM' : 'PM'); }
   function late(t) { var d = parseD(t.due); if (!d || t.status === 'Done') return false; var n = new Date(); n.setHours(0, 0, 0, 0); return d < n; }
   function statusCls(s) { return {'In Progress': 'prog', 'Waiting': 'wait', 'Blocked': 'block', 'Done': 'done'}[s] || ''; }
@@ -202,7 +210,8 @@
       var nf = ((S.data && S.data.flags) || []).length;
       var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' :
         (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' :
-        (t.badge && t.badge() ? '<span class="badge">' + t.badge() + '</span>' : ''));
+        (t.badge && t.badge() ? '<span class="badge">' + t.badge() + '</span>' :
+        (t.k === 'hours' && S.data && S.data.clock ? '<span class="badge" style="background:var(--green);min-width:10px;height:10px;padding:0"></span>' : '')));
       return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
     }).join('');
     $('#fab').classList.remove('hidden');
@@ -469,8 +478,19 @@
   // ---------- hours ----------
   function renderHours(noFetch) {
     var list = (S.hours || []).slice().sort(function (a, b) { return (parseD(b.date) || 0) - (parseD(a.date) || 0); });
-    var html = '<h2>Hours</h2>';
-    if (!list.length) html += '<div class="empty">No hours logged in the last 3 weeks.<br>Tap + to log today.</div>';
+    var html = '<h2>Hours</h2>', ck = S.data.clock;
+    if (ck) html += '<div class="card" style="border:2px solid var(--green)"><div class="title">\ud83d\udfe2 On the clock \u2013 ' + esc(ck.job) + '</div>' +
+      '<div class="sub">Since ' + esc(ck.start) + (ck.date !== todayStr() ? ' on ' + esc(ck.date) : '') + ' \u00b7 ' + esc(sinceTxt(ck.date, ck.start)) +
+      (ck.machine ? ' \u00b7 ' + esc(ck.machine) + (ck.meterStart ? ' from ' + esc(ck.meterStart) : '') : '') + '</div>' +
+      '<button class="btn ok" data-clock="out" style="width:100%;margin-top:10px">Clock out &amp; finish log</button></div>';
+    else html += '<button class="btn primary" data-clock="in" style="width:100%;padding:16px;font-size:17px;margin-bottom:10px">\u23f1 Clock in</button>' +
+      '<div class="sub" style="margin:-4px 2px 10px">Forgot to clock in? Tap + to log the hours after.</div>';
+    var oc = (S.data.onClock || []).filter(function (e) { return e.person !== me().name; });
+    if (me().owner && oc.length) html += '<h3>On the clock now</h3>' + oc.map(function (e) {
+      return '<div class="card"><div class="title">' + esc(e.person) + ' \u00b7 ' + esc(e.job) + '</div><div class="sub">Since ' + esc(e.start) +
+        (e.date !== todayStr() ? ' on ' + esc(e.date) : '') + ' \u00b7 ' + esc(sinceTxt(e.date, e.start)) + (e.machine ? ' \u00b7 ' + esc(e.machine) : '') + '</div></div>'; }).join('');
+    list = list.filter(function (h) { return h.end || h.pending; });
+    if (!list.length) html += '<div class="empty">No hours logged in the last 3 weeks.</div>';
     var last = '';
     list.forEach(function (h) {
       if (h.date !== last) { html += '<h3>' + esc(h.date) + '</h3>'; last = h.date; }
@@ -501,14 +521,53 @@
       '</div>';
   }
 
-  function hoursForm() {
+  function clockInForm() {
+    var jobs = S.data.jobs.map(function (j) { return j.name; });
+    sheet('<h2>Clock in</h2><div class="kv">Starting now: <b>' + esc(to12(nowHM())) + '</b></div>' +
+      '<label>Which job?</label><select id="ci-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
+      '<label>Starting on a machine? <span class="sub">(optional)</span></label><div id="h-mlist">' + machineLine(0) + '</div>' +
+      '<div class="sub">You can add more machines when you clock out.</div>' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Clock in</button></div>', function (act) {
+      if (act !== 'save') return closeSheet();
+      var job = $('#ci-job').value; if (!job) return toast('Pick the job');
+      var el = document.querySelector('#h-mlist .mline'), mname = el.querySelector('.h-mach').value, ms = el.querySelector('.h-ms').value.trim(), mc = mach(mname);
+      if (mc && mc.meter && (!ms || isNaN(+ms))) { el.querySelector('.h-ms').focus(); return toast('Enter the hour meter at start'); }
+      if (mc && mc.meter && mc.hours !== null && mc.hours !== undefined && +ms < mc.hours && !confirm('Meter start (' + ms + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
+      var f = {job: job, machine: mname, meterStart: mname ? ms : '', at: to12(nowHM()), date: todayStr(), clientId: uid()};
+      S.data.clock = {id: f.clientId.slice(0, 8), person: me().name, date: f.date, job: job, start: f.at, machine: mname, meterStart: f.meterStart};
+      if (mc && mc.meter && ms) mc.hours = +ms;
+      ls.set('lastJob', job);
+      enqueue('time.clockin', {fields: f});
+      save(); closeSheet(); render(); toast('Clocked in at ' + f.at);
+    });
+    var box = $('#h-mlist'); box.onchange = function (e) { var el = e.target.closest('.mline'); if (el && e.target.classList.contains('h-mach')) wireLine(el); };
+    box.onclick = function (e) { var d = e.target.closest('[data-mdel]'); if (!d) return; e.stopPropagation(); var el = d.closest('.mline'); el.querySelector('.h-mach').value = ''; wireLine(el); };
+    var me_ = box.querySelector('.h-me'); if (me_) me_.parentNode.style.display = 'none';
+  }
+  function wireLine(el) {
+    var mc = mach(el.querySelector('.h-mach').value);
+    el.querySelector('.h-met').style.display = mc && mc.meter ? 'flex' : 'none';
+    el.querySelector('.h-hrsbox').style.display = mc && !mc.meter && !el.closest('#sheet-body').querySelector('#ci-job') ? 'block' : 'none';
+    el.querySelector('.h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
+    var w = el.querySelector('.h-warn'), L = mc && FLAGS[mc.status];
+    if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
+    else w.style.display = 'none';
+  }
+  function clockOut() {
+    var ck = S.data.clock; if (!ck) return;
+    hoursForm({id: ck.id, date: ck.date, job: ck.job, start: to24(ck.start), end: nowHM(),
+      machines: ck.machine ? [{machine: ck.machine, meterStart: ck.meterStart}] : []});
+  }
+
+  function hoursForm(pre) {
     var m = me(), jobs = S.data.jobs.map(function (j) { return j.name; });
-    var html = '<h2>Log hours</h2>' +
-      (m.owner ? '<label>Who</label><select id="h-person">' + options(S.data.people, m.name) + '</select>' : '') +
-      '<label>Date</label><input type="date" id="h-date" value="' + usToIso(todayStr()) + '">' +
-      '<label>Job</label><select id="h-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
-      '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="07:00"></div>' +
-      '<div><label>End</label><input type="time" id="h-end"></div></div>' +
+    pre = pre || null;
+    var html = '<h2>' + (pre ? 'Clock out \u2013 finish your log' : 'Log hours') + '</h2>' +
+      (m.owner && !pre ? '<label>Who</label><select id="h-person">' + options(S.data.people, m.name) + '</select>' : '') +
+      '<label>Date</label><input type="date" id="h-date" value="' + usToIso(pre ? pre.date : todayStr()) + '"' + (pre ? ' disabled' : '') + '>' +
+      '<label>Job</label><select id="h-job">' + options(jobs, pre ? pre.job : ls.get('lastJob', ''), true) + '</select>' +
+      '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="' + (pre ? pre.start : '07:00') + '"></div>' +
+      '<div><label>End</label><input type="time" id="h-end" value="' + (pre ? pre.end : '') + '"></div></div>' +
       '<label>Machines used <span class="sub">(skip if none)</span></label><div id="h-mlist"></div>' +
       '<button class="btn" id="h-madd" style="width:100%">+ Add a machine</button>' +
       '<label>What you did</label><textarea id="h-work" placeholder="Tap the mic on your keyboard to talk"></textarea>' +
@@ -517,15 +576,6 @@
     function addLine() {
       $('#h-mlist').insertAdjacentHTML('beforeend', machineLine(n++));
       $('#h-madd').textContent = '+ Add another machine';
-    }
-    function wireLine(el) {
-      var mc = mach(el.querySelector('.h-mach').value);
-      el.querySelector('.h-met').style.display = mc && mc.meter ? 'flex' : 'none';
-      el.querySelector('.h-hrsbox').style.display = mc && !mc.meter ? 'block' : 'none';
-      el.querySelector('.h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
-      var w = el.querySelector('.h-warn'), L = mc && FLAGS[mc.status];
-      if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
-      else w.style.display = 'none';
     }
     sheet(html, function (act) {
       if (act !== 'save') return closeSheet();
@@ -551,13 +601,26 @@
       }
       if (!f.work) return toast('Say what you did');
       f.machines.forEach(function (x) { var mc = mach(x.machine); if (mc && mc.meter) mc.hours = +(x.meterEnd || x.meterStart); });
-      f.clientId = uid();
       ls.set('lastJob', f.job);
+      if (pre) {
+        f.id = pre.id; f.date = pre.date;
+        S.data.clock = null;
+        S.hours = (S.hours || []).filter(function (h) { return h.id !== pre.id; });
+        S.hours.unshift(Object.assign({pending: true, person: m.name}, f));
+        enqueue('time.clockout', {fields: f});
+        save(); closeSheet(); render(); toast('Clocked out \u2013 hours logged');
+        return;
+      }
+      f.clientId = uid();
       S.hours.unshift(Object.assign({pending: true, person: f.person || m.name}, f));
       enqueue('time.create', {fields: f});
       save(); closeSheet(); render(); toast('Hours logged');
     });
     $('#h-madd').onclick = function (e) { e.stopPropagation(); addLine(); };
+    if (pre && pre.machines) pre.machines.forEach(function (x) {
+      addLine(); var el = document.querySelector('#h-mlist .mline:last-child');
+      el.querySelector('.h-mach').value = x.machine; wireLine(el); el.querySelector('.h-ms').value = x.meterStart || '';
+    });
     $('#h-mlist').onchange = function (e) { var el = e.target.closest('.mline'); if (el && e.target.classList.contains('h-mach')) wireLine(el); };
     $('#h-mlist').onclick = function (e) {
       var d = e.target.closest('[data-mdel]'); if (!d) return; e.stopPropagation();
@@ -779,6 +842,8 @@
     }
     var al = e.target.closest('[data-alerts]');
     if (al) { if (al.getAttribute('data-alerts') === 'on') turnOnAlerts(); else { ls.set('alertsHide', true); render(); } return; }
+    var ckb = e.target.closest('[data-clock]');
+    if (ckb) return ckb.getAttribute('data-clock') === 'in' ? clockInForm() : clockOut();
     var fg = e.target.closest('[data-flag]');
     if (fg) { S.tab = 'equip'; ls.set('tab', 'equip'); window.scrollTo(0, 0); render(); if (window.E10K.openMachine) window.E10K.openMachine(fg.getAttribute('data-flag')); return; }
     var c = e.target.closest('[data-chip]'); if (c) { S.chip = c.getAttribute('data-chip'); return renderTasks(); }
