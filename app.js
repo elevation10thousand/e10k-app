@@ -188,8 +188,8 @@
     var t = [{k: 'mine', ic: ICONS.check, n: 'My Tasks'}];
     t.push({k: 'all', ic: ICONS.list, n: me().owner ? 'All Open' : 'Job Tasks'});
     t.push({k: 'hours', ic: ICONS.clock, n: 'Hours'});
-    t.push({k: 'walks', ic: ICONS.mtn, n: 'Walkthroughs'});
-    EXTRA_TABS.forEach(function (x) { t.splice(3, 0, x); });
+    t.push({k: 'walks', ic: ICONS.mtn, n: 'Walks'});
+    t.splice.apply(t, [3, 0].concat(EXTRA_TABS));
     return t;
   }
 
@@ -201,7 +201,8 @@
     $('#tabs').innerHTML = tabs.map(function (t) {
       var nf = ((S.data && S.data.flags) || []).length;
       var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' :
-        (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' : '');
+        (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' :
+        (t.badge && t.badge() ? '<span class="badge">' + t.badge() + '</span>' : ''));
       return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
     }).join('');
     $('#fab').classList.remove('hidden');

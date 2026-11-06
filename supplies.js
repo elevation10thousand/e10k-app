@@ -1,26 +1,59 @@
-/* E10K app: Supplies list (inside the Equipment tab). Anyone adds what's running low;
- * Spencer + Hanna get an alert; Sam fills in a price check; anyone marks Ordered / Got it. */
+/* E10K app: Supplies tab.
+ *  - Need to buy: anyone adds what's running low; Spencer + Hanna get an alert; Sam adds a price check.
+ *  - Used from shop: anyone logs a part/material pulled from our shop for a job (words and/or photo);
+ *    Sam identifies it and finds a recent price; Spencer or Hanna OK it, and only then it's logged to the job's costs. */
 (function () {
   'use strict';
   var A = window.E10K;
   if (!A) return;
   var $ = A.$, esc = A.esc, ls = A.ls, toast = A.toast;
   var SUP = {items: ls.get('supplies', null), cats: ls.get('supplyCats', ['Fuel', 'Oil & Fluids', 'Filters & Parts', 'Batteries', 'Tools', 'Shop Supplies', 'Safety', 'Materials', 'Other'])};
+  var SHOP = {items: ls.get('shopUsed', null), categories: ls.get('shopCats', []), billing: ls.get('shopBilling', ['Contract', 'Change order', 'T&M extra', 'Not billable']), def: 'MISC LABOR AND MATERIALS'};
   var URG = {Out: {ic: '\u26a0\ufe0f', label: 'Out', color: 'var(--red)'}, Low: {ic: '\ud83d\udfe0', label: 'Running low', color: 'var(--orange)'},
     Soon: {ic: '\ud83d\udd35', label: 'Need soon', color: 'var(--blue)'}};
   var RANK = {Out: 0, Low: 1, Soon: 2};
+  var SHOP_ST = {Pricing: {t: 'Sam is pricing', c: ''}, 'Check price': {t: 'Waiting for OK', c: 'wait'}, Logged: {t: 'Logged to job', c: 'done'}, 'Not logged': {t: 'Not logged', c: ''}};
 
+  function view() { return ls.get('supView', 'buy'); }
   function count() { return (SUP.items || []).filter(function (x) { return x.status !== 'Got it'; }).length; }
-  function load() {
-    return A.api('supplies.list').then(function (r) {
-      if (!r.ok) return;
-      SUP.items = r.items; SUP.cats = r.cats; ls.set('supplies', SUP.items); ls.set('supplyCats', SUP.cats);
-      if (A.S.data) A.S.data.supplyCount = count();
-      if (A.S.tab === 'equip' && ls.get('eqView', 'machines') === 'supplies') render(true);
-    }).catch(function () {});
+  function checkCount() { return (SHOP.items || []).filter(function (x) { return x.status === 'Check price'; }).length; }
+  function money(v) { var n = parseFloat(String(v || '').replace(/[^0-9.\-]/g, '')); return isNaN(n) ? '' : '$' + n.toFixed(2); }
+  function fixNl(t) { return String(t || '').replace(/\\n/g, '\n'); }
+  function linkify(t) {
+    return esc(fixNl(t)).replace(/(https?:\/\/[^\s<]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 45 ? u.slice(0, 42) + '\u2026' : u) + '</a>'; });
+  }
+  function badge() {
+    var n = count() + (A.me().owner ? checkCount() : 0);
+    var ic = document.querySelector('[data-tab=supplies] .ic'); if (!ic) return;
+    var old = ic.querySelector('.badge'); if (old) old.remove();
+    if (n) ic.insertAdjacentHTML('beforeend', '<span class="badge"' + (A.me().owner && checkCount() ? ' style="background:var(--orange)"' : '') + '>' + n + '</span>');
   }
 
-  function card(x) {
+  function load() {
+    var a = A.api('supplies.list').then(function (r) {
+      if (!r.ok) return; SUP.items = r.items; SUP.cats = r.cats; ls.set('supplies', SUP.items); ls.set('supplyCats', SUP.cats);
+    });
+    var b = A.api('shop.list').then(function (r) {
+      if (!r.ok) return; SHOP.items = r.items; ls.set('shopUsed', SHOP.items);
+      if (r.categories) { SHOP.categories = r.categories; SHOP.billing = r.billing; SHOP.def = r.defaultCategory; ls.set('shopCats', r.categories); ls.set('shopBilling', r.billing); }
+    });
+    return Promise.all([a, b]).then(function () { badge(); if (A.S.tab === 'supplies') render(true); }).catch(function () {});
+  }
+
+  function chips() {
+    var v = view(), cc = A.me().owner ? checkCount() : 0;
+    return '<div class="chips" style="margin:6px 0 2px"><button class="chip' + (v === 'buy' ? ' on' : '') + '" data-supview="buy">\ud83d\uded2 Need to buy' + (count() ? ' (' + count() + ')' : '') + '</button>' +
+      '<button class="chip' + (v === 'shop' ? ' on' : '') + '" data-supview="shop">\ud83d\udd27 Used from shop' + (cc ? ' (' + cc + ' to OK)' : '') + '</button></div>';
+  }
+
+  function render(noFetch) {
+    if (view() === 'shop') renderShop(); else renderBuy();
+    badge();
+    if (!noFetch && navigator.onLine) load();
+  }
+
+  // ---------- need to buy ----------
+  function buyCard(x) {
     var U = URG[x.urgency] || URG.Low, got = x.status === 'Got it';
     return '<div class="card tap' + (got ? ' done' : '') + '" data-supply="' + esc(x.id) + '" style="cursor:pointer' + (x.urgency === 'Out' && !got ? ';border:2px solid var(--red)' : '') + '">' +
       '<div class="row"><div class="grow"><div class="title">' + (got ? '\u2705 ' : U.ic + ' ') + esc(x.item) + (x.qty ? ' <span class="sub">\u00b7 ' + esc(x.qty) + '</span>' : '') + '</div>' +
@@ -30,9 +63,8 @@
       '</div><span class="pill' + (x.status === 'Ordered' ? ' prog' : got ? ' done' : '') + '"' + (!got && x.status === 'Needed' ? ' style="color:' + U.color + '"' : '') + '>' +
       esc(got ? 'Got it' : x.status === 'Ordered' ? 'Ordered' : U.label) + '</span></div></div>';
   }
-
-  function render(noFetch) {
-    var html = (A.eqViewChips ? A.eqViewChips() : '') + '<h2>Supplies</h2>';
+  function renderBuy() {
+    var html = '<h2>Supplies</h2>' + chips();
     var items = SUP.items;
     if (!items) html += '<div class="empty">Loading\u2026</div>';
     else {
@@ -41,16 +73,14 @@
       });
       var got = items.filter(function (x) { return x.status === 'Got it'; });
       if (!open.length) html += '<div class="empty">Nothing on the list.<br>Tap + when something is running low.</div>';
-      html += open.map(card).join('');
-      if (got.length) html += '<h3>Got it (last 10 days)</h3>' + got.map(card).join('');
+      html += open.map(buyCard).join('');
+      if (got.length) html += '<h3>Got it (last 10 days)</h3>' + got.map(buyCard).join('');
     }
     $('#view').innerHTML = html;
-    if (!noFetch && navigator.onLine) load();
   }
+  function findBuy(id) { return (SUP.items || []).filter(function (x) { return x.id === id; })[0]; }
 
-  function find(id) { return (SUP.items || []).filter(function (x) { return x.id === id; })[0]; }
-
-  function supplyForm() {
+  function buyForm() {
     var html = '<h2>Running low</h2>' +
       '<label>What do we need?</label><input id="sp-item" placeholder="Diesel, D batteries for the laser\u2026">' +
       '<div class="two"><div><label>How much</label><input id="sp-qty" placeholder="e.g. 100 gal, 8 pack"></div>' +
@@ -67,10 +97,9 @@
       var f = {item: $('#sp-item').value.trim(), qty: $('#sp-qty').value.trim(), cat: $('#sp-cat').value, forWhat: $('#sp-for').value.trim(),
         urgency: urg, notes: $('#sp-notes').value.trim(), clientId: A.uid()};
       if (!f.item) return toast('What do we need?');
-      var temp = {id: 'S-' + f.clientId.slice(0, 8), date: A.todayStr(), item: f.item, qty: f.qty, cat: f.cat, forWhat: f.forWhat, urgency: urg,
-        by: A.me().name, status: 'Needed', notes: f.notes};
-      SUP.items = (SUP.items || []).concat([temp]); ls.set('supplies', SUP.items);
-      if (A.S.data) A.S.data.supplyCount = count();
+      SUP.items = (SUP.items || []).concat([{id: 'S-' + f.clientId.slice(0, 8), date: A.todayStr(), item: f.item, qty: f.qty, cat: f.cat, forWhat: f.forWhat,
+        urgency: urg, by: A.me().name, status: 'Needed', notes: f.notes}]);
+      ls.set('supplies', SUP.items);
       A.enqueue('supplies.add', {fields: f});
       A.closeSheet(); render(true); toast('Added \u2013 Spencer and Hanna get a heads-up');
     });
@@ -78,10 +107,9 @@
       var b = e.target.closest('[data-urg]'); if (!b) return; e.stopPropagation(); urg = b.getAttribute('data-urg');
       Array.prototype.forEach.call(document.querySelectorAll('#sp-urg .chip'), function (x) { x.classList.toggle('on', x === b); });
     };
-    setTimeout(function () { var i = $('#sp-item'); if (i) i.focus(); }, 50);
   }
 
-  function detail(x) {
+  function buyDetail(x) {
     var m = A.me(), U = URG[x.urgency] || URG.Low;
     var html = '<h2>' + esc(x.item) + '</h2>' +
       '<div class="kv">' + esc([x.qty, x.cat, x.forWhat ? 'for ' + x.forWhat : ''].filter(Boolean).join(' \u00b7 ')) + '</div>' +
@@ -106,21 +134,144 @@
       if (f.status) { x.status = f.status; if (f.status === 'Got it') { x.gotBy = m.name; x.gotDate = A.todayStr(); } }
       if (m.owner) { x.best = f.best; x.vendor = f.vendor; x.cost = f.cost; }
       if (f.note) x.notes = (x.notes ? x.notes + ' | ' : '') + A.todayStr() + ' ' + m.name + ': ' + f.note;
-      ls.set('supplies', SUP.items); if (A.S.data) A.S.data.supplyCount = count();
+      ls.set('supplies', SUP.items);
       A.enqueue('supplies.update', {fields: f});
       A.closeSheet(); render(true); toast(f.status ? f.status : 'Saved');
     });
   }
-  function fixNl(t) { return String(t || '').replace(/\\n/g, '\n'); }
-  function linkify(t) {
-    return esc(fixNl(t)).replace(/(https?:\/\/[^\s<]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 45 ? u.slice(0, 42) + '\u2026' : u) + '</a>'; });
+
+  // ---------- used from shop ----------
+  function shopCard(x) {
+    var st = SHOP_ST[x.status] || SHOP_ST.Pricing, m = A.me();
+    return '<div class="card tap" data-shop="' + esc(x.id) + '" style="cursor:pointer' + (m.owner && x.status === 'Check price' ? ';border:2px solid var(--orange)' : '') + '">' +
+      '<div class="row"><div class="grow"><div class="title">' + esc(x.identified || x.said || 'Part from shop') + (x.qty && String(x.qty) !== '1' ? ' <span class="sub">\u00b7 x' + esc(x.qty) + '</span>' : '') + '</div>' +
+      '<div class="sub">' + esc([x.job, x.by + ' ' + A.shortD(x.date), x.photos ? x.photos + ' photo' + (x.photos > 1 ? 's' : '') : ''].filter(Boolean).join(' \u00b7 ')) + '</div>' +
+      (x.identified && x.said && x.identified !== x.said ? '<div class="sub">"' + esc(String(x.said).slice(0, 80)) + '"</div>' : '') +
+      '</div><div style="text-align:right">' + (m.owner && x.total ? '<div class="title" style="font-size:15px">' + esc(money(x.total)) + '</div>' : '') +
+      '<span class="pill ' + st.c + '">' + esc(st.t) + '</span></div></div></div>';
+  }
+  function renderShop() {
+    var m = A.me(), items = SHOP.items;
+    var html = '<h2>Supplies</h2>' + chips() +
+      '<div class="sub" style="margin:4px 2px 10px">Grabbed a part or material from the shop for a job? Tap + and describe it or snap a photo. Sam finds the price, ' +
+      (m.owner ? 'you OK it, and then it\u2019s charged to the job.' : 'Spencer or Hanna OK it, and then it\u2019s charged to the job.') + '</div>';
+    if (!items) html += '<div class="empty">Loading\u2026</div>';
+    else {
+      var groups = [['Check price', m.owner ? 'Needs your OK' : 'Waiting for Spencer or Hanna'], ['Pricing', 'Sam is pricing'], ['Logged', 'Logged to jobs (last 30 days)'], ['Not logged', 'Not logged']];
+      var any = false;
+      groups.forEach(function (g) {
+        var list = items.filter(function (x) { return x.status === g[0]; }); if (!list.length) return;
+        any = true; html += '<h3>' + esc(g[1]) + '</h3>' + list.map(shopCard).join('');
+      });
+      if (!any) html += '<div class="empty">Nothing logged yet.<br>Tap + when you pull something from the shop.</div>';
+    }
+    $('#view').innerHTML = html;
+  }
+  function findShop(id) { return (SHOP.items || []).filter(function (x) { return x.id === id; })[0]; }
+
+  function shopForm() {
+    var jobs = (A.S.data.jobs || []).map(function (j) { return j.name; }), photos = [];
+    var html = '<h2>Used from shop</h2>' +
+      '<label>Which job?</label><select id="su-job"><option value=""></option>' + jobs.map(function (j) {
+        return '<option' + (j === ls.get('lastJob', '') ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('') + '</select>' +
+      '<label>What is it?</label><textarea id="su-said" style="min-height:70px" placeholder="Tap the mic: 2 inch PVC 90s, a 10 ft stick of 4 inch SDR pipe, 3 hydraulic hose fittings\u2026"></textarea>' +
+      '<label>How many</label><input id="su-qty" inputmode="decimal" value="1">' +
+      '<label>Photo of the part (helps Sam get it right)</label><input type="file" id="su-ph" accept="image/*" capture="environment" multiple><div class="photos" id="su-ph-prev"></div>' +
+      '<div class="sub" style="margin-top:8px">Sam finds a recent price. Nothing is charged to the job until Spencer or Hanna OKs it.</div>' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send</button></div>';
+    A.sheet(html, function (act) {
+      if (act !== 'save') return A.closeSheet();
+      var f = {job: $('#su-job').value, said: $('#su-said').value.trim(), qty: $('#su-qty').value.trim() || '1', photos: photos, clientId: A.uid()};
+      if (!f.job) return toast('Pick the job');
+      if (!f.said && !photos.length) return toast('Describe it or add a photo');
+      ls.set('lastJob', f.job);
+      SHOP.items = [{id: 'U-' + f.clientId.slice(0, 8), date: A.todayStr(), job: f.job, by: A.me().name, said: f.said, qty: f.qty, photos: photos.length, status: 'Pricing'}].concat(SHOP.items || []);
+      ls.set('shopUsed', SHOP.items);
+      A.enqueue('shop.add', {fields: f});
+      A.closeSheet(); render(true); toast('Sent \u2013 Sam will price it');
+    });
+    $('#su-ph').onchange = function (e) {
+      Array.prototype.forEach.call(e.target.files, function (file) {
+        A.shrink(file).then(function (d) {
+          photos.push({data: d, type: 'image/jpeg'});
+          var im = document.createElement('img'); im.src = d; $('#su-ph-prev').appendChild(im);
+        }).catch(function () { toast('Could not read a photo'); });
+      });
+      e.target.value = '';
+    };
   }
 
-  A.renderSupplies = render;
-  A.supplyForm = supplyForm;
+  function shopDetail(x) {
+    var m = A.me(), st = SHOP_ST[x.status] || SHOP_ST.Pricing, canOk = m.owner && (x.status === 'Check price' || x.status === 'Pricing');
+    var cats = SHOP.categories.length ? SHOP.categories : [SHOP.def];
+    var html = '<h2>' + esc(x.identified || 'Part from shop') + '</h2>' +
+      '<div class="kv">' + esc(x.job) + ' \u00b7 ' + esc(x.by) + ' ' + esc(x.date) + ' \u00b7 <b>' + esc(st.t) + '</b>' + (x.costId ? ' (' + esc(x.costId) + ')' : '') + '</div>' +
+      (x.said ? '<div class="notes">' + esc(x.by) + ' said: "' + esc(x.said) + '"</div>' : '') +
+      (x.photos ? '<div class="photos" id="sh-ph"><div class="sub">Loading photo\u2026</div></div>' : '') +
+      (m.owner ? (x.samNotes || x.source ? '<h3>Sam\u2019s price check</h3><div class="card" style="white-space:pre-wrap;font-size:14px">' + linkify([x.source, x.samNotes].filter(Boolean).join('\n')) + '</div>' :
+        (x.status === 'Pricing' ? '<div class="sub" style="margin-top:8px">Sam is identifying and pricing this\u2026</div>' : '')) : '') +
+      (x.ownerNotes ? '<div class="sub">' + esc(x.ownerNotes) + '</div>' : '') +
+      (canOk ? '<label>Description for the job cost</label><input id="sh-what" value="' + esc(x.identified || x.said || '') + '">' +
+        '<div class="two"><div><label>Unit price $</label><input id="sh-unit" inputmode="decimal" value="' + esc(String(x.unit || '').replace(/[$,]/g, '')) + '"></div>' +
+        '<div><label>Qty</label><input id="sh-qty" inputmode="decimal" value="' + esc(x.qty || '1') + '"></div></div>' +
+        '<div class="kv">Total <b id="sh-total"></b></div>' +
+        '<div class="two"><div><label>Category</label><select id="sh-cat">' + cats.map(function (c) { return '<option' + (c === (x.category || SHOP.def) ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label>Billing</label><select id="sh-bill">' + SHOP.billing.map(function (c) { return '<option' + (c === (x.billing || 'Contract') ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div></div>' +
+        '<label>Note (optional, e.g. why it\u2019s wrong)</label><input id="sh-note">' +
+        '<div class="btns"><button class="btn" data-act="reprice">Wrong \u2013 re-price</button><button class="btn" data-act="reject">Don\u2019t log</button></div>' +
+        '<div class="btns"><button class="btn" data-act="x">Close</button><button class="btn ok" data-act="approve">\u2705 Looks right \u2013 log to job</button></div>'
+        : (m.owner && x.total ? '<div class="kv">Logged: <b>' + esc(money(x.total)) + '</b> \u00b7 ' + esc(x.category || '') + ' \u00b7 ' + esc(x.billing || '') + (x.approvedBy ? ' \u00b7 OK\u2019d by ' + esc(x.approvedBy) : '') + '</div>' : '') +
+          '<div class="btns"><button class="btn" data-act="x">Close</button></div>');
+    A.sheet(html, function (act) {
+      if (act === 'x') return A.closeSheet();
+      if (!canOk) return;
+      var f = {id: x.id, action: act, note: $('#sh-note').value.trim()};
+      if (act === 'approve') {
+        f.identified = $('#sh-what').value.trim(); f.unit = $('#sh-unit').value.trim(); f.qty = $('#sh-qty').value.trim();
+        f.category = $('#sh-cat').value; f.billing = $('#sh-bill').value;
+        if (!f.unit || isNaN(+f.unit)) return toast('Enter the unit price');
+        f.total = Math.round(+f.unit * (+f.qty || 1) * 100) / 100;
+        x.status = 'Logged'; x.identified = f.identified; x.unit = f.unit; x.qty = f.qty; x.total = f.total; x.category = f.category; x.billing = f.billing; x.approvedBy = m.name;
+      } else if (act === 'reprice') {
+        if (!f.note) { $('#sh-note').focus(); return toast('Say what\u2019s wrong so Sam can fix it'); }
+        x.status = 'Pricing'; x.unit = ''; x.total = '';
+      } else if (act === 'reject') { x.status = 'Not logged'; }
+      ls.set('shopUsed', SHOP.items);
+      A.enqueue('shop.decide', {fields: f});
+      A.closeSheet(); render(true);
+      toast(act === 'approve' ? 'Logged to ' + x.job + ' \u2013 ' + money(f.total) : act === 'reprice' ? 'Sent back to Sam' : 'Not logged');
+    });
+    if (canOk) {
+      var upd = function () { var u = +$('#sh-unit').value || 0, q = +$('#sh-qty').value || 1; $('#sh-total').textContent = u ? '$' + (u * q).toFixed(2) : '-'; };
+      $('#sh-unit').oninput = upd; $('#sh-qty').oninput = upd; upd();
+    }
+    if (x.photos && navigator.onLine) A.api('shop.get', {id: x.id}).then(function (r) {
+      var el = $('#sh-ph'); if (!el || !r.ok) return;
+      el.innerHTML = r.photos.map(function (p) { return p.data ? '<img src="' + p.data + '" style="width:120px;height:120px">' : '<a class="sub" target="_blank" href="' + esc(p.url) + '">Open photo</a>'; }).join('');
+      el.onclick = function (e) {
+        var im = e.target.closest('img'); if (!im) return;
+        var v = document.createElement('div'); v.id = 'photo-viewer';
+        v.style.cssText = 'position:fixed;inset:0;background:#000d;z-index:99;display:flex;align-items:center;justify-content:center';
+        v.innerHTML = '<img src="' + im.src + '" style="max-width:100%;max-height:100%">'; v.onclick = function () { v.remove(); };
+        document.body.appendChild(v);
+      };
+    }).catch(function () {});
+  }
+
+  // ---------- wiring ----------
+  A.addTab({k: 'supplies', n: 'Supplies', ic: A.svg('<path d="M3 4h2l2.4 11h11.2L21 7H6.2M9 20a1 1 0 1 0 0-.01M18 20a1 1 0 1 0 0-.01"/>'),
+    render: function () { render(); },
+    badge: function () { return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() : 0) : ((A.S.data && A.S.data.supplyCount) || 0) + ((A.S.data && A.S.data.shopCheck) || 0); },
+    fab: function () { return view() === 'shop' ? shopForm() : buyForm(); }});
+
   document.addEventListener('click', function (e) {
-    if (A.S.tab !== 'equip') return;
-    var c = e.target.closest('[data-supply]'); if (!c) return;
-    var x = find(c.getAttribute('data-supply')); if (x) detail(x);
+    if (A.S.tab !== 'supplies') return;
+    var v = e.target.closest('[data-supview]');
+    if (v) { ls.set('supView', v.getAttribute('data-supview')); window.scrollTo(0, 0); return render(); }
+    var c = e.target.closest('[data-supply]'); if (c) { var x = findBuy(c.getAttribute('data-supply')); if (x) return buyDetail(x); }
+    var s = e.target.closest('[data-shop]'); if (s) { var y = findShop(s.getAttribute('data-shop')); if (y) return shopDetail(y); }
   });
+  // keep the tab badge fresh even when the tab isn't open
+  setTimeout(function () { if (navigator.onLine && A.S.data) load(); }, 4000);
+  setInterval(function () { if (!document.hidden && navigator.onLine && A.S.data) load(); }, 180000);
 })();

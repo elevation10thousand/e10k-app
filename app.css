@@ -99,3 +99,5 @@ nav#tabs button .ic { position: relative; }
 .lvl.on.l-Problem { border-color: var(--orange); background: #3a2a0a; }
 .lvl.on.l-Watch { border-color: #e6c200; background: #2f2a08; }
 .ficon { font-size: 18px; margin-right: 6px; }
+
+nav#tabs button { font-size: 10.5px; }
