@@ -226,6 +226,7 @@
     });
     wirePhotos('pc-ph', photos);
     var pcLevel = wireLevels('pc-lvl');
+    if (m.hours !== null && m.hours !== undefined && $('#pc-h')) $('#pc-h').value = m.hours;
     Array.prototype.forEach.call(document.querySelectorAll('[data-pc]'), function (b) {
       b.onclick = function (e) {
         e.stopPropagation();

@@ -525,30 +525,29 @@
     var jobs = S.data.jobs.map(function (j) { return j.name; });
     sheet('<h2>Clock in</h2><div class="kv">Starting now: <b>' + esc(to12(nowHM())) + '</b></div>' +
       '<label>Which job?</label><select id="ci-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
-      '<label>Starting on a machine? <span class="sub">(optional)</span></label><div id="h-mlist">' + machineLine(0) + '</div>' +
-      '<div class="sub">You can add more machines when you clock out.</div>' +
+      '<div class="sub">Machines and their hours go in when you clock out. Starting hours fill in from the last log.</div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Clock in</button></div>', function (act) {
       if (act !== 'save') return closeSheet();
       var job = $('#ci-job').value; if (!job) return toast('Pick the job');
-      var el = document.querySelector('#h-mlist .mline'), mname = el.querySelector('.h-mach').value, ms = el.querySelector('.h-ms').value.trim(), mc = mach(mname);
-      if (mc && mc.meter && (!ms || isNaN(+ms))) { el.querySelector('.h-ms').focus(); return toast('Enter the hour meter at start'); }
-      if (mc && mc.meter && mc.hours !== null && mc.hours !== undefined && +ms < mc.hours && !confirm('Meter start (' + ms + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
-      var f = {job: job, machine: mname, meterStart: mname ? ms : '', at: to12(nowHM()), date: todayStr(), clientId: uid()};
-      S.data.clock = {id: f.clientId.slice(0, 8), person: me().name, date: f.date, job: job, start: f.at, machine: mname, meterStart: f.meterStart};
-      if (mc && mc.meter && ms) mc.hours = +ms;
+      var f = {job: job, at: to12(nowHM()), date: todayStr(), clientId: uid()};
+      S.data.clock = {id: f.clientId.slice(0, 8), person: me().name, date: f.date, job: job, start: f.at, machine: '', meterStart: ''};
       ls.set('lastJob', job);
       enqueue('time.clockin', {fields: f});
       save(); closeSheet(); render(); toast('Clocked in at ' + f.at);
     });
-    var box = $('#h-mlist'); box.onchange = function (e) { var el = e.target.closest('.mline'); if (el && e.target.classList.contains('h-mach')) wireLine(el); };
-    box.onclick = function (e) { var d = e.target.closest('[data-mdel]'); if (!d) return; e.stopPropagation(); var el = d.closest('.mline'); el.querySelector('.h-mach').value = ''; wireLine(el); };
-    var me_ = box.querySelector('.h-me'); if (me_) me_.parentNode.style.display = 'none';
   }
   function wireLine(el) {
     var mc = mach(el.querySelector('.h-mach').value);
     el.querySelector('.h-met').style.display = mc && mc.meter ? 'flex' : 'none';
     el.querySelector('.h-hrsbox').style.display = mc && !mc.meter && !el.closest('#sheet-body').querySelector('#ci-job') ? 'block' : 'none';
-    el.querySelector('.h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
+    var msEl = el.querySelector('.h-ms'), known = mc && mc.hours !== null && mc.hours !== undefined;
+    if (known && (!msEl.value || msEl.getAttribute('data-auto') === '1')) { msEl.value = mc.hours; msEl.setAttribute('data-auto', '1'); }
+    msEl.placeholder = known ? '' : 'first time: enter it';
+    var hint = el.querySelector('.h-mshint');
+    if (!hint) { msEl.insertAdjacentHTML('afterend', '<div class="sub h-mshint"></div>'); hint = el.querySelector('.h-mshint'); }
+    hint.textContent = known ? 'from last log' : 'no hours on file yet';
+    msEl.oninput = function () { msEl.setAttribute('data-auto', '0'); };
+    var meEl = el.querySelector('.h-me'); if (meEl) meEl.placeholder = 'hour meter now';
     var w = el.querySelector('.h-warn'), L = mc && FLAGS[mc.status];
     if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
     else w.style.display = 'none';
@@ -591,7 +590,8 @@
           hours: el.querySelector('.h-hrs').value.trim()};
         if (mc && mc.meter) {
           if (!x.meterStart || isNaN(+x.meterStart)) { el.querySelector('.h-ms').focus(); return toast('Enter the hour meter at start for ' + name); }
-          if (x.meterEnd && +x.meterEnd < +x.meterStart) { el.querySelector('.h-me').focus(); return toast(name + ': meter end is lower than start'); }
+          if (!x.meterEnd || isNaN(+x.meterEnd)) { el.querySelector('.h-me').focus(); return toast('Enter the hour meter at the end for ' + name); }
+          if (+x.meterEnd < +x.meterStart) { el.querySelector('.h-me').focus(); return toast(name + ': meter end is lower than start'); }
           if (mc.hours !== null && mc.hours !== undefined && +x.meterStart < mc.hours &&
             !confirm(name + ': meter start (' + x.meterStart + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
           if (mc.hours !== null && mc.hours !== undefined && +x.meterStart > mc.hours + 300 &&
