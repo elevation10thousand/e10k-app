@@ -357,6 +357,7 @@
   function findTask(id) { return (S.data.tasks || []).find(function (t) { return t.id === id; }); }
 
   function openTask(id) {
+    if (id === 'CHAT') { if (window.E10K.openChat) window.E10K.openChat(); return; }
     var t = findTask(id); if (!t) return;
     var m = me();
     if (isNewFor(t)) { markSeen(t); setTimeout(render, 0); }
