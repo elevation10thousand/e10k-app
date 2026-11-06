@@ -35,16 +35,35 @@
     var html = '<h2>Equipment</h2>';
     if (!EQ.list) html += '<div class="empty">Loading\u2026</div>';
     else {
-      var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3};
-      EQ.list.slice().sort(function (a, b) { return rank[a.state] - rank[b.state] || a.key.localeCompare(b.key); }).forEach(function (m) {
-        html += '<div class="card tap" data-machine="' + esc(m.key) + '"><div class="row"><div class="grow">' +
+      var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3}, fr = {DOWN: 0, Problem: 1};
+      EQ.list.slice().sort(function (a, b) {
+        var fa = fr[a.status] === undefined ? 2 : fr[a.status], fb = fr[b.status] === undefined ? 2 : fr[b.status];
+        return fa - fb || rank[a.state] - rank[b.state] || a.key.localeCompare(b.key);
+      }).forEach(function (m) {
+        html += '<div class="card tap' + flagCls(m) + '" data-machine="' + esc(m.key) + '"><div class="row"><div class="grow">' +
           '<div class="title">' + esc(m.model) + '</div><div class="sub">' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) + ' hrs' +
-          (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') : '') + '</div></div>' +
-          '<span class="pill ' + stateCls(m.state) + '">' + esc(nextLine(m)) + '</span></div></div>';
+          (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') : '') + '</div>' +
+          (m.status && m.status !== 'In Service' ? '<div class="sub" style="color:' + (m.status === 'DOWN' ? 'var(--red)' : 'var(--orange)') + ';font-weight:600">' +
+            (m.status === 'DOWN' ? '\u26d4 DOWN' : '\u26a0\ufe0f Problem') + ': ' + esc(lastNote(m.statusNote)) + '</div>' : '') +
+          '</div><span class="pill ' + stateCls(m.state) + '">' + esc(nextLine(m)) + '</span></div></div>';
       });
     }
     $('#view').innerHTML = html;
     if (!noFetch && navigator.onLine) load(true);
+  }
+
+  function flagCls(m) { return m.status === 'DOWN' ? ' flagdown' : (m.status === 'Problem' ? ' flagprob' : ''); }
+  function lastNote(n) { return String(n || '').split(' | ').pop(); }
+  function setLocalFlag(m, level, note) {
+    if (!(m.status === 'DOWN' && level !== 'DOWN')) m.status = level;
+    var line = A.me().name + ' ' + A.todayStr() + ': ' + note;
+    m.statusNote = m.statusNote ? m.statusNote + ' | ' + line : line;
+    if (!m.statusSince) m.statusSince = A.todayStr();
+    var fl = A.S.data.flags || (A.S.data.flags = []);
+    var f = fl.filter(function (x) { return x.key === m.key; })[0];
+    if (f) { f.status = m.status; f.note = m.statusNote; } else fl.push({key: m.key, model: m.model, status: m.status, note: m.statusNote, since: m.statusSince, by: A.me().name});
+    var bm = (A.S.data.machines || []).filter(function (x) { return x.name === m.key; })[0]; if (bm) bm.status = m.status;
+    A.save(); A.renderFlags();
   }
 
   function machine(key) { return (EQ.list || []).filter(function (m) { return m.key === key; })[0]; }
@@ -53,6 +72,9 @@
     var m = machine(key); if (!m) { EQ.open = null; return render(); }
     var html = '<button class="chip" data-eq="back">\u2190 All equipment</button>' +
       '<h2>' + esc(m.model) + '</h2>' +
+      (m.status && m.status !== 'In Service' ? '<div class="card' + flagCls(m) + '"><div class="title">' + (m.status === 'DOWN' ? '\u26d4 DOWN \u2013 do not run' : '\u26a0\ufe0f Problem reported') + '</div>' +
+        String(m.statusNote || '').split(' | ').map(function (n) { return '<div class="sub" style="color:#ddd">' + esc(n) + '</div>'; }).join('') +
+        '<button class="btn ok" data-eq="service" style="width:100%;margin-top:10px">\u2705 Back in service</button></div>' : '') +
       '<div class="kv">Hours <b>' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) : 'not entered') + '</b>' + (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') + '</div>' +
       (m.serial ? '<div class="kv">S/N <b>' + esc(m.serial) + '</b></div>' : '') +
       (m.engine ? '<div class="kv">Engine <b>' + esc(m.engine) + '</b>' + (m.engineSn ? ' \u00b7 S/N ' + esc(m.engineSn) : '') + '</div>' : '') +
@@ -147,7 +169,9 @@
 
   function checkForm(m) {
     var items = EQ.checklist || [], photos = [];
-    var html = '<h2>Pre-start: ' + esc(m.model) + '</h2>' + hoursField(m, 'pc-h') +
+    var html = '<h2>Pre-start: ' + esc(m.model) + '</h2>' +
+      (m.status === 'DOWN' ? '<div class="card flagdown"><b>\u26d4 This machine is flagged DOWN.</b><div class="sub">' + esc(lastNote(m.statusNote)) + '</div></div>' : '') +
+      hoursField(m, 'pc-h') +
       '<div class="sub" style="margin:10px 2px">Tap anything that is NOT OK and add a note.</div>' +
       items.map(function (it, i) {
         return '<div class="card" style="padding:10px 12px"><div class="row"><div class="grow title" style="font-size:15px">' + esc(it) + '</div>' +
@@ -162,11 +186,16 @@
         var bad = $('[data-pc="' + i + '"]').getAttribute('data-bad') === '1';
         return {name: it, ok: !bad, note: bad ? $('#pc-n' + i).value.trim() : ''};
       });
-      var f = {machine: m.key, hours: $('#pc-h').value.trim(), items: res, down: $('#pc-down').checked,
+      var hv = $('#pc-h').value.trim();
+      if (m.meter !== false && (!hv || isNaN(+hv))) { $('#pc-h').focus(); return toast('Enter the hour meter reading'); }
+      if (hv && m.hours !== null && m.hours !== undefined && +hv < m.hours && !confirm('That is lower than the last reading (' + fmtH(m.hours) + '). Save anyway?')) return;
+      var f = {machine: m.key, hours: hv, items: res, down: $('#pc-down').checked,
         notes: $('#pc-notes').value.trim(), photos: photos, clientId: A.uid()};
       var bad = res.filter(function (x) { return !x.ok; }).length;
       A.enqueue('equip.check', {fields: f});
-      after(bad ? 'Saved \u2013 Bob has been sent a repair task' : 'All OK \u2013 saved');
+      if (hv) { m.hours = +hv; m.hoursAsOf = A.todayStr(); }
+      if (bad) setLocalFlag(m, f.down ? 'DOWN' : 'Problem', res.filter(function (x) { return !x.ok; }).map(function (x) { return x.note || x.name + ' - not OK'; }).join('; '));
+      after(bad ? 'Saved \u2013 flagged for everyone and Bob has a repair task' : 'All OK \u2013 saved');
     });
     wirePhotos('pc-ph', photos);
     Array.prototype.forEach.call(document.querySelectorAll('[data-pc]'), function (b) {
@@ -187,10 +216,33 @@
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send</button></div>', function (act) {
       if (act !== 'save') return A.closeSheet();
       var t = $('#pr-t').value.trim(); if (!t) return toast('Describe the problem');
-      A.enqueue('equip.problem', {fields: {machine: m.key, text: t, hours: $('#pr-h').value.trim(), down: $('#pr-down').checked, photos: photos, clientId: A.uid()}});
-      after('Sent \u2013 Bob, Spencer and Will get an alert');
+      var dn = $('#pr-down').checked;
+      A.enqueue('equip.problem', {fields: {machine: m.key, text: t, hours: $('#pr-h').value.trim(), down: dn, photos: photos, clientId: A.uid()}});
+      setLocalFlag(m, dn ? 'DOWN' : 'Problem', t);
+      after('Sent \u2013 flagged for everyone (Spencer, Hanna, Bob, Will)');
     });
     wirePhotos('pr-ph', photos);
+  }
+
+  function serviceForm(m) {
+    var repairs = (EQ.hist[m.key] && EQ.hist[m.key].repairs || []).filter(function (r) { return r.phase === 'Equipment Repair'; });
+    A.sheet('<h2>Back in service: ' + esc(m.model) + '</h2>' +
+      '<div class="sub">' + esc(lastNote(m.statusNote)) + '</div>' +
+      '<label>What fixed it?</label><textarea id="bs-n" placeholder="Tap the mic: replaced the hydraulic hose, no more leak"></textarea>' + hoursField(m, 'bs-h') +
+      (repairs.length ? '<label style="display:flex;gap:8px;align-items:center;color:var(--text)"><input type="checkbox" id="bs-close" checked style="width:auto"> Close the repair task' + (repairs.length > 1 ? 's' : '') +
+        ' (' + esc(repairs.map(function (r) { return r.task.replace(/^Fix [^:]+: /, ''); }).join('; ').slice(0, 90)) + ')</label>' : '') +
+      '<div class="sub">For parts and labor, also use Log service / repair.</div>' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save">Back in service</button></div>', function (act) {
+      if (act !== 'save') return A.closeSheet();
+      var note = $('#bs-n').value.trim(); if (!note) return toast('Say what fixed it');
+      var hv = $('#bs-h').value.trim();
+      A.enqueue('equip.service', {fields: {machine: m.key, note: note, hours: hv, closeRepairs: !!($('#bs-close') && $('#bs-close').checked), clientId: A.uid()}});
+      m.status = 'In Service'; m.statusNote = ''; if (hv) { m.hours = +hv; m.hoursAsOf = A.todayStr(); }
+      A.S.data.flags = (A.S.data.flags || []).filter(function (x) { return x.key !== m.key; });
+      var bm = (A.S.data.machines || []).filter(function (x) { return x.name === m.key; })[0]; if (bm) bm.status = 'In Service';
+      A.save(); A.renderFlags();
+      after('Back in service \u2013 everyone gets a heads-up');
+    });
   }
 
   function logForm(m) {
@@ -239,6 +291,8 @@
         function (k) { A.closeSheet(); EQ.open = k; render(true); });
     }});
 
+  A.openMachine = function (key) { EQ.open = key; window.scrollTo(0, 0); render(); };
+
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'equip') return;
     var mc = e.target.closest('[data-machine]');
@@ -251,5 +305,6 @@
     if (act === 'check') return checkForm(m);
     if (act === 'problem') return problemForm(m);
     if (act === 'log') return logForm(m);
+    if (act === 'service') return serviceForm(m);
   });
 })();

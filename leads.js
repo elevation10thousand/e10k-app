@@ -153,7 +153,7 @@
       '<label>Subject</label><input id="le-sub" value="' + esc(d.subject) + '">' +
       '<label>Message</label><textarea id="le-body" style="min-height:300px">' + esc(body) + '</textarea>' +
       '<div class="sub" style="margin-top:8px" id="le-how"></div>' +
-      '<div class="btns"><button class="btn" data-act="back">Back</button><button class="btn" data-act="mailto">My email</button><button class="btn ok" data-act="send">Send</button></div>';
+      '<div class="btns"><button class="btn" data-act="back">Back</button>' + (A.me().name === 'Spencer' ? '<button class="btn" data-act="mailto">My email</button>' : '') + '<button class="btn ok" data-act="send">Send</button></div>';
     A.sheet(html, function (act) {
       if (act === 'back') return after ? after(null) : A.closeSheet();
       var to = $('#le-to').value.trim(), sub = $('#le-sub').value.trim(), b = $('#le-body').value;
@@ -173,8 +173,8 @@
       }).catch(function () { btn.disabled = false; btn.textContent = 'Send'; A.toast('No signal \u2013 try again'); });
     });
     function how() {
-      $('#le-how').innerHTML = '<b>Send</b>: goes from Sam\'s email as ' + esc(snd.name) + '; replies and a copy go to ' + esc(snd.reply || 'you') + '. ' +
-        '<b>My email</b>: opens it in your own email app, then asks if you sent it so it still gets logged.';
+      $('#le-how').innerHTML = '<b>Send</b>: goes out as ' + esc(snd.name) + ' (the broker); replies and a copy go to ' + esc(snd.reply || 'him') + '.' +
+        (A.me().name === 'Spencer' ? ' <b>My email</b>: opens it in your own email app, then asks if you sent it so it still gets logged.' : '');
     }
     how();
     var fr = document.getElementById('le-from');

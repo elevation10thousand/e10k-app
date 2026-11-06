@@ -203,11 +203,22 @@
       return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
     }).join('');
     $('#fab').classList.remove('hidden');
+    renderFlags();
     if (S.tab === 'hours') return renderHours();
     if (S.tab === 'walks') return renderWalks();
     var ex = EXTRA_TABS.filter(function (x) { return x.k === S.tab; })[0];
     if (ex) return ex.render();
     renderTasks();
+  }
+
+  function renderFlags() {
+    var fl = (S.data && S.data.flags) || [];
+    $('#flags').innerHTML = fl.map(function (f) {
+      var down = f.status === 'DOWN';
+      var note = String(f.note || '').split(' | ').pop();
+      return '<button class="flag' + (down ? '' : ' problem') + '" data-flag="' + esc(f.key) + '">' + (down ? '\u26d4 ' : '\u26a0\ufe0f ') + esc(f.model) +
+        (down ? ' is DOWN \u2013 do not run' : ' has a problem') + '<span class="fs">' + esc(note) + (f.since ? ' \u00b7 since ' + esc(shortD(f.since)) : '') + '</span></button>';
+    }).join('');
   }
 
   function taskCard(t) {
@@ -279,6 +290,8 @@
     var seen = ls.get('seen', {}); seen[t.id] = 1; ls.set('seen', seen);
     enqueue('task.seen', {id: t.id});
   }
+
+  function mach(name) { return ((S.data && S.data.machines) || []).filter(function (x) { return x.name === name; })[0]; }
 
   function findTask(id) { return (S.data.tasks || []).find(function (t) { return t.id === id; }); }
 
@@ -423,6 +436,7 @@
       '<div><label>End</label><input type="time" id="h-end"></div></div>' +
       '<label>Machine</label><select id="h-machine"><option value="">None</option>' +
       S.data.machines.map(function (x) { return '<option>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+      '<div id="h-mwarn" class="sub" style="display:none;color:var(--red);font-weight:600;margin-top:6px"></div>' +
       '<div id="meters" class="two" style="display:none"><div><label>Meter start</label><input inputmode="decimal" id="h-ms"></div>' +
       '<div><label>Meter end</label><input inputmode="decimal" id="h-me"></div></div>' +
       '<label>What you did</label><textarea id="h-work" placeholder="Tap the mic on your keyboard to talk"></textarea>' +
@@ -435,14 +449,31 @@
       if (!f.job) return toast('Pick the job');
       if (!f.start || !f.end) return toast('Fill in start and end time');
       if (!f.work) return toast('Say what you did');
+      var mc = mach(f.machine);
+      if (mc && mc.meter) {
+        if (!f.meterStart || isNaN(+f.meterStart)) { $('#h-ms').focus(); return toast('Enter the hour meter at start'); }
+        if (mc.hours !== null && mc.hours !== undefined && +f.meterStart < mc.hours &&
+          !confirm('Meter start (' + f.meterStart + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
+        if (mc.hours !== null && mc.hours !== undefined && +f.meterStart > mc.hours + 300 &&
+          !confirm('Meter start is ' + Math.round(+f.meterStart - mc.hours) + ' hrs more than the last reading (' + mc.hours + '). Is that right?')) return;
+      }
       if (f.machine && f.meterStart && f.meterEnd && +f.meterEnd < +f.meterStart) return toast('Meter end is lower than start');
+      if (mc && mc.meter) mc.hours = +(f.meterEnd || f.meterStart);
       f.clientId = uid();
       ls.set('lastJob', f.job);
       S.hours.unshift(Object.assign({pending: true, person: f.person || m.name}, f));
       enqueue('time.create', {fields: f});
       save(); closeSheet(); render(); toast('Hours logged');
     });
-    var ms = $('#h-machine'); ms.onchange = function () { $('#meters').style.display = ms.value ? 'flex' : 'none'; };
+    var ms = $('#h-machine'); ms.onchange = function () {
+      var mc = mach(ms.value);
+      $('#meters').style.display = ms.value ? 'flex' : 'none';
+      $('#h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
+      $('#h-me').placeholder = 'at end';
+      var w = $('#h-mwarn');
+      if (mc && mc.status && mc.status !== 'In Service') { w.style.display = 'block'; w.textContent = mc.status === 'DOWN' ? '\u26d4 This machine is flagged DOWN \u2013 do not run it.' : '\u26a0\ufe0f This machine has a reported problem.'; }
+      else w.style.display = 'none';
+    };
   }
 
   // ---------- walkthroughs ----------
@@ -626,6 +657,8 @@
     if (b) { S.tab = b.getAttribute('data-tab'); ls.set('tab', S.tab); S.chip = 'All'; S.filter = ''; window.scrollTo(0, 0); return render(); }
     var al = e.target.closest('[data-alerts]');
     if (al) { if (al.getAttribute('data-alerts') === 'on') turnOnAlerts(); else { ls.set('alertsHide', true); render(); } return; }
+    var fg = e.target.closest('[data-flag]');
+    if (fg) { S.tab = 'equip'; ls.set('tab', 'equip'); window.scrollTo(0, 0); render(); if (window.E10K.openMachine) window.E10K.openMachine(fg.getAttribute('data-flag')); return; }
     var c = e.target.closest('[data-chip]'); if (c) { S.chip = c.getAttribute('data-chip'); return renderTasks(); }
     var wj = e.target.closest('[data-wjob]'); if (wj) { ls.set('walkJob', wj.getAttribute('data-wjob')); return renderWalks(); }
     var wk = e.target.closest('[data-walk]'); if (wk) { var w = (S.walks || [])[+wk.getAttribute('data-walk')]; if (w) return walkDetail(w); }
@@ -657,7 +690,7 @@
   window.E10K = {
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me,
-    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render
+    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
