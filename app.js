@@ -29,7 +29,7 @@
     var m = location.hash.match(/[#&]t=([A-Za-z0-9_\-]{24,})/);
     if (m) {
       if (ls.get('token', null) !== m[1]) {   // new person on this phone: drop the old copy
-        ['data', 'hours', 'walks', 'queue', 'tab'].forEach(function (k) { localStorage.removeItem('e10k.' + k); });
+        ['data', 'hours', 'walks', 'queue', 'tab', 'chat', 'chatSeen', 'supplies', 'shopUsed', 'seen', 'equip'].forEach(function (k) { localStorage.removeItem('e10k.' + k); });
       }
       ls.set('token', m[1]); return m[1];
     }
