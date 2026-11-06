@@ -600,6 +600,10 @@
         f.machines.push(x);
       }
       if (!f.work) return toast('Say what you did');
+      var t0 = to24(f.start).split(':'), t1 = to24(f.end).split(':');
+      var span = ((+t1[0] * 60 + +t1[1]) - (+t0[0] * 60 + +t0[1]) + 1440) % 1440 / 60;
+      var onM = f.machines.reduce(function (a, x) { var v = x.meterEnd && x.meterStart ? x.meterEnd - x.meterStart : (+x.hours || 0); return a + (v > 0 ? v : 0); }, 0);
+      if (onM > span + 0.25 && !confirm('Machine hours (' + onM.toFixed(1) + ') are more than your time on the job (' + span.toFixed(1) + ' hrs). Save anyway?')) return;
       f.machines.forEach(function (x) { var mc = mach(x.machine); if (mc && mc.meter) mc.hours = +(x.meterEnd || x.meterStart); });
       ls.set('lastJob', f.job);
       if (pre) {
