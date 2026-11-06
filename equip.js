@@ -30,9 +30,17 @@
     }).catch(function () { if (!quiet) toast('No signal \u2013 showing saved copy'); });
   }
 
+  function viewChips() {
+    var v = ls.get('eqView', 'machines'), n = (A.S.data && A.S.data.supplyCount) || 0;
+    return '<div class="chips" style="margin:6px 0 2px"><button class="chip' + (v === 'machines' ? ' on' : '') + '" data-eqview="machines">Machines</button>' +
+      '<button class="chip' + (v === 'supplies' ? ' on' : '') + '" data-eqview="supplies">\ud83d\uded2 Supplies' + (n ? ' (' + n + ')' : '') + '</button></div>';
+  }
+  A.eqViewChips = viewChips;
+
   function render(noFetch) {
     if (EQ.open) return renderMachine(EQ.open, noFetch);
-    var html = '<h2>Equipment</h2>';
+    if (ls.get('eqView', 'machines') === 'supplies' && A.renderSupplies) return A.renderSupplies(noFetch);
+    var html = viewChips() + '<h2>Equipment</h2>';
     if (!EQ.list) html += '<div class="empty">Loading\u2026</div>';
     else {
       var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3}, fr = {DOWN: 0, Problem: 1, Watch: 2};
@@ -322,6 +330,7 @@
   A.addTab({k: 'equip', n: 'Equipment', ic: A.svg('<path d="M3 17h13M5 17V9h7l3 4h4v4M7 20a2 2 0 1 0 0-.01M17 20a2 2 0 1 0 0-.01M12 9V5h3"/>'),
     render: function () { render(); },
     fab: function () {
+      if (!EQ.open && ls.get('eqView', 'machines') === 'supplies' && A.supplyForm) return A.supplyForm();
       if (!EQ.list) return;
       if (EQ.open) return problemForm(machine(EQ.open));
       A.sheet('<h2>Which machine?</h2>' + EQ.list.map(function (m) {
@@ -335,6 +344,8 @@
 
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'equip') return;
+    var vw = e.target.closest('[data-eqview]');
+    if (vw) { ls.set('eqView', vw.getAttribute('data-eqview')); EQ.open = null; window.scrollTo(0, 0); return render(); }
     var mc = e.target.closest('[data-machine]');
     if (mc) { EQ.open = mc.getAttribute('data-machine'); A.navPush(); window.scrollTo(0, 0); return render(); }
     var b = e.target.closest('[data-eq]'); if (!b) return;
