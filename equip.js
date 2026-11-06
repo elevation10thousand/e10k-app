@@ -35,16 +35,15 @@
     var html = '<h2>Equipment</h2>';
     if (!EQ.list) html += '<div class="empty">Loading\u2026</div>';
     else {
-      var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3}, fr = {DOWN: 0, Problem: 1};
+      var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3}, fr = {DOWN: 0, Problem: 1, Watch: 2};
       EQ.list.slice().sort(function (a, b) {
-        var fa = fr[a.status] === undefined ? 2 : fr[a.status], fb = fr[b.status] === undefined ? 2 : fr[b.status];
+        var fa = fr[a.status] === undefined ? 3 : fr[a.status], fb = fr[b.status] === undefined ? 3 : fr[b.status];
         return fa - fb || rank[a.state] - rank[b.state] || a.key.localeCompare(b.key);
       }).forEach(function (m) {
         html += '<div class="card tap' + flagCls(m) + '" data-machine="' + esc(m.key) + '"><div class="row"><div class="grow">' +
-          '<div class="title">' + esc(m.model) + '</div><div class="sub">' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) + ' hrs' +
+          '<div class="title">' + (FL(m.status) ? '<span class="ficon">' + FL(m.status).ic + '</span>' : '') + esc(m.model) + '</div><div class="sub">' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) + ' hrs' +
           (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') : '') + '</div>' +
-          (m.status && m.status !== 'In Service' ? '<div class="sub" style="color:' + (m.status === 'DOWN' ? 'var(--red)' : 'var(--orange)') + ';font-weight:600">' +
-            (m.status === 'DOWN' ? '\u26d4 DOWN' : '\u26a0\ufe0f Problem') + ': ' + esc(lastNote(m.statusNote)) + '</div>' : '') +
+          (FL(m.status) ? '<div class="sub" style="color:' + FL(m.status).color + ';font-weight:600">' + esc(FL(m.status).label) + ': ' + esc(lastNote(m.statusNote)) + '</div>' : '') +
           '</div><span class="pill ' + stateCls(m.state) + '">' + esc(nextLine(m)) + '</span></div></div>';
       });
     }
@@ -52,10 +51,29 @@
     if (!noFetch && navigator.onLine) load(true);
   }
 
-  function flagCls(m) { return m.status === 'DOWN' ? ' flagdown' : (m.status === 'Problem' ? ' flagprob' : ''); }
+  function FL(st) { return A.FLAGS[st]; }
+  function flagCls(m) { var L = FL(m.status); return L ? ' ' + L.cls : ''; }
+  function levelPicker(id, cur) {
+    return '<div id="' + id + '">' + ['DOWN', 'Problem', 'Watch'].map(function (k) {
+      var L = FL(k), sub = {DOWN: 'Do not run it. Bob gets a High repair task.', Problem: 'Still OK to run carefully. Bob gets a repair task.', Watch: 'Runs fine, just keep an eye on it.'}[k];
+      return '<button class="lvl l-' + k + (k === cur ? ' on' : '') + '" data-lvl="' + k + '">' + L.ic + ' ' + esc(L.label) + '<span class="ls">' + sub + '</span></button>';
+    }).join('') + '</div>';
+  }
+  function wireLevels(id, onPick) {
+    var box = document.getElementById(id); var picked = '';
+    var on = box.querySelector('.lvl.on'); if (on) picked = on.getAttribute('data-lvl');
+    box.onclick = function (e) {
+      var b = e.target.closest('[data-lvl]'); if (!b) return; e.stopPropagation();
+      picked = b.getAttribute('data-lvl');
+      Array.prototype.forEach.call(box.querySelectorAll('.lvl'), function (x) { x.classList.toggle('on', x === b); });
+      if (onPick) onPick(picked);
+    };
+    return function () { return picked; };
+  }
   function lastNote(n) { return String(n || '').split(' | ').pop(); }
+  var RANK = {'In Service': 0, Watch: 1, Problem: 2, DOWN: 3};
   function setLocalFlag(m, level, note) {
-    if (!(m.status === 'DOWN' && level !== 'DOWN')) m.status = level;
+    if ((RANK[level] || 0) >= (RANK[m.status] || 0)) m.status = level;
     var line = A.me().name + ' ' + A.todayStr() + ': ' + note;
     m.statusNote = m.statusNote ? m.statusNote + ' | ' + line : line;
     if (!m.statusSince) m.statusSince = A.todayStr();
@@ -71,10 +89,10 @@
   function renderMachine(key, noFetch) {
     var m = machine(key); if (!m) { EQ.open = null; return render(); }
     var html = '<button class="chip" data-eq="back">\u2190 All equipment</button>' +
-      '<h2>' + esc(m.model) + '</h2>' +
-      (m.status && m.status !== 'In Service' ? '<div class="card' + flagCls(m) + '"><div class="title">' + (m.status === 'DOWN' ? '\u26d4 DOWN \u2013 do not run' : '\u26a0\ufe0f Problem reported') + '</div>' +
+      '<h2>' + (FL(m.status) ? FL(m.status).ic + ' ' : '') + esc(m.model) + '</h2>' +
+      (FL(m.status) ? '<div class="card' + flagCls(m) + '"><div class="title">' + FL(m.status).ic + ' ' + esc(FL(m.status).label) + '</div>' +
         String(m.statusNote || '').split(' | ').map(function (n) { return '<div class="sub" style="color:#ddd">' + esc(n) + '</div>'; }).join('') +
-        '<button class="btn ok" data-eq="service" style="width:100%;margin-top:10px">\u2705 Back in service</button></div>' : '') +
+        '<div class="btns"><button class="btn" data-eq="level">Change level</button><button class="btn ok" data-eq="service">\u2705 Back in service</button></div></div>' : '') +
       '<div class="kv">Hours <b>' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) : 'not entered') + '</b>' + (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') + '</div>' +
       (m.serial ? '<div class="kv">S/N <b>' + esc(m.serial) + '</b></div>' : '') +
       (m.engine ? '<div class="kv">Engine <b>' + esc(m.engine) + '</b>' + (m.engineSn ? ' \u00b7 S/N ' + esc(m.engineSn) : '') + '</div>' : '') +
@@ -170,14 +188,14 @@
   function checkForm(m) {
     var items = EQ.checklist || [], photos = [];
     var html = '<h2>Pre-start: ' + esc(m.model) + '</h2>' +
-      (m.status === 'DOWN' ? '<div class="card flagdown"><b>\u26d4 This machine is flagged DOWN.</b><div class="sub">' + esc(lastNote(m.statusNote)) + '</div></div>' : '') +
+      (FL(m.status) ? '<div class="card' + flagCls(m) + '"><b>' + FL(m.status).ic + ' ' + esc(FL(m.status).label) + '</b><div class="sub">' + esc(lastNote(m.statusNote)) + '</div></div>' : '') +
       hoursField(m, 'pc-h') +
       '<div class="sub" style="margin:10px 2px">Tap anything that is NOT OK and add a note.</div>' +
       items.map(function (it, i) {
         return '<div class="card" style="padding:10px 12px"><div class="row"><div class="grow title" style="font-size:15px">' + esc(it) + '</div>' +
           '<button class="chip on" data-pc="' + i + '">OK</button></div><input id="pc-n' + i + '" placeholder="What\u2019s wrong?" style="display:none;margin-top:8px"></div>';
       }).join('') +
-      '<label><input type="checkbox" id="pc-down" style="width:auto"> Machine is DOWN \u2013 do not run</label>' +
+      '<div id="pc-lvlbox" style="display:none"><label>How bad is it?</label>' + levelPicker('pc-lvl', '') + '</div>' +
       '<label>Notes</label><textarea id="pc-notes" style="min-height:60px"></textarea>' + photoInput('pc-ph') +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save check</button></div>';
     A.sheet(html, function (act) {
@@ -189,15 +207,18 @@
       var hv = $('#pc-h').value.trim();
       if (m.meter !== false && (!hv || isNaN(+hv))) { $('#pc-h').focus(); return toast('Enter the hour meter reading'); }
       if (hv && m.hours !== null && m.hours !== undefined && +hv < m.hours && !confirm('That is lower than the last reading (' + fmtH(m.hours) + '). Save anyway?')) return;
-      var f = {machine: m.key, hours: hv, items: res, down: $('#pc-down').checked,
+      var nbad = res.filter(function (x) { return !x.ok; }).length, lvl = pcLevel();
+      if (nbad && !lvl) { $('#pc-lvlbox').scrollIntoView({block: 'center'}); return toast('Pick how bad it is'); }
+      var f = {machine: m.key, hours: hv, items: res, level: lvl, down: lvl === 'DOWN',
         notes: $('#pc-notes').value.trim(), photos: photos, clientId: A.uid()};
       var bad = res.filter(function (x) { return !x.ok; }).length;
       A.enqueue('equip.check', {fields: f});
       if (hv) { m.hours = +hv; m.hoursAsOf = A.todayStr(); }
-      if (bad) setLocalFlag(m, f.down ? 'DOWN' : 'Problem', res.filter(function (x) { return !x.ok; }).map(function (x) { return x.note || x.name + ' - not OK'; }).join('; '));
+      if (bad) setLocalFlag(m, lvl, res.filter(function (x) { return !x.ok; }).map(function (x) { return x.note || x.name + ' - not OK'; }).join('; '));
       after(bad ? 'Saved \u2013 flagged for everyone and Bob has a repair task' : 'All OK \u2013 saved');
     });
     wirePhotos('pc-ph', photos);
+    var pcLevel = wireLevels('pc-lvl');
     Array.prototype.forEach.call(document.querySelectorAll('[data-pc]'), function (b) {
       b.onclick = function (e) {
         e.stopPropagation();
@@ -205,6 +226,7 @@
         b.setAttribute('data-bad', bad ? '1' : '0'); b.textContent = bad ? 'NOT OK' : 'OK';
         b.className = 'chip' + (bad ? '' : ' on'); b.style.background = bad ? 'var(--red)' : ''; b.style.color = bad ? '#000' : '';
         $('#pc-n' + i).style.display = bad ? 'block' : 'none'; if (bad) $('#pc-n' + i).focus();
+        $('#pc-lvlbox').style.display = document.querySelector('[data-pc][data-bad="1"]') ? 'block' : 'none';
       };
     });
   }
@@ -212,16 +234,32 @@
   function problemForm(m) {
     var photos = [];
     A.sheet('<h2>Problem: ' + esc(m.model) + '</h2><label>What\u2019s wrong?</label><textarea id="pr-t" placeholder="Tap the mic and describe it"></textarea>' +
-      hoursField(m, 'pr-h') + '<label><input type="checkbox" id="pr-down" style="width:auto"> Machine is DOWN \u2013 do not run</label>' + photoInput('pr-ph') +
+      '<label>How bad is it?</label>' + levelPicker('pr-lvl', '') + hoursField(m, 'pr-h') + photoInput('pr-ph') +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send</button></div>', function (act) {
       if (act !== 'save') return A.closeSheet();
       var t = $('#pr-t').value.trim(); if (!t) return toast('Describe the problem');
-      var dn = $('#pr-down').checked;
-      A.enqueue('equip.problem', {fields: {machine: m.key, text: t, hours: $('#pr-h').value.trim(), down: dn, photos: photos, clientId: A.uid()}});
-      setLocalFlag(m, dn ? 'DOWN' : 'Problem', t);
+      var lv = prLevel(); if (!lv) return toast('Pick how bad it is');
+      A.enqueue('equip.problem', {fields: {machine: m.key, text: t, hours: $('#pr-h').value.trim(), level: lv, down: lv === 'DOWN', photos: photos, clientId: A.uid()}});
+      setLocalFlag(m, lv, t);
       after('Sent \u2013 flagged for everyone (Spencer, Hanna, Bob, Will)');
     });
     wirePhotos('pr-ph', photos);
+    var prLevel = wireLevels('pr-lvl');
+  }
+
+  function levelForm(m) {
+    A.sheet('<h2>' + esc(m.model) + '</h2><div class="sub">' + esc(lastNote(m.statusNote)) + '</div><label>How bad is it now?</label>' + levelPicker('lv-lvl', m.status) +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>', function (act) {
+      if (act !== 'save') return A.closeSheet();
+      var lv = get(); if (!lv || lv === m.status) return A.closeSheet();
+      A.enqueue('equip.flag', {fields: {machine: m.key, level: lv}});
+      m.status = lv;
+      var f = (A.S.data.flags || []).filter(function (x) { return x.key === m.key; })[0]; if (f) f.status = lv;
+      var bm = (A.S.data.machines || []).filter(function (x) { return x.name === m.key; })[0]; if (bm) bm.status = lv;
+      A.save(); A.renderFlags();
+      after('Changed to ' + FL(lv).label + ' \u2013 everyone gets a heads-up');
+    });
+    var get = wireLevels('lv-lvl');
   }
 
   function serviceForm(m) {
@@ -306,5 +344,6 @@
     if (act === 'problem') return problemForm(m);
     if (act === 'log') return logForm(m);
     if (act === 'service') return serviceForm(m);
+    if (act === 'level') return levelForm(m);
   });
 })();

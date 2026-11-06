@@ -89,3 +89,13 @@ nav#tabs button .ic { position: relative; }
 #flags .flag .fs { display: block; font-weight: 400; font-size: 13px; color: #ddd; margin-top: 2px; }
 .card.flagdown { border: 2px solid var(--red); background: #2a0c0c; }
 .card.flagprob { border: 2px solid var(--orange); background: #2a210c; }
+
+#flags .flag.watch { border-color: #e6c200; background: #2f2a08; }
+.card.flagwatch { border: 2px solid #e6c200; background: #262208; }
+.lvl { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 12px; border-radius: 12px; border: 2px solid var(--line);
+  background: var(--card); color: var(--text); font: 600 15px var(--sans); }
+.lvl .ls { display: block; font-weight: 400; font-size: 13px; color: var(--dim); margin-top: 2px; }
+.lvl.on.l-DOWN { border-color: var(--red); background: #3a0d0d; }
+.lvl.on.l-Problem { border-color: var(--orange); background: #3a2a0a; }
+.lvl.on.l-Watch { border-color: #e6c200; background: #2f2a08; }
+.ficon { font-size: 18px; margin-right: 6px; }

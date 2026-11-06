@@ -211,13 +211,19 @@
     renderTasks();
   }
 
+  var FLAGS = {
+    DOWN: {ic: '\u26d4', label: 'CRITICAL \u2013 do not operate until repaired', short: 'Critical', cls: 'flagdown', b: '', color: 'var(--red)'},
+    Problem: {ic: '\u26a0\ufe0f', label: 'Broken but operational', short: 'Broken, still running', cls: 'flagprob', b: ' problem', color: 'var(--orange)'},
+    Watch: {ic: '\u2139\ufe0f', label: 'Something to be aware of', short: 'Be aware', cls: 'flagwatch', b: ' watch', color: '#e6c200'}
+  };
+  var FLAG_ORDER = {DOWN: 0, Problem: 1, Watch: 2};
   function renderFlags() {
-    var fl = (S.data && S.data.flags) || [];
+    var fl = ((S.data && S.data.flags) || []).slice().sort(function (a, b) { return (FLAG_ORDER[a.status] || 0) - (FLAG_ORDER[b.status] || 0); });
     $('#flags').innerHTML = fl.map(function (f) {
-      var down = f.status === 'DOWN';
+      var L = FLAGS[f.status] || FLAGS.Problem;
       var note = String(f.note || '').split(' | ').pop();
-      return '<button class="flag' + (down ? '' : ' problem') + '" data-flag="' + esc(f.key) + '">' + (down ? '\u26d4 ' : '\u26a0\ufe0f ') + esc(f.model) +
-        (down ? ' is DOWN \u2013 do not run' : ' has a problem') + '<span class="fs">' + esc(note) + (f.since ? ' \u00b7 since ' + esc(shortD(f.since)) : '') + '</span></button>';
+      return '<button class="flag' + L.b + '" data-flag="' + esc(f.key) + '">' + L.ic + ' ' + esc(f.model) + ': ' + esc(L.label) +
+        '<span class="fs">' + esc(note) + (f.since ? ' \u00b7 since ' + esc(shortD(f.since)) : '') + '</span></button>';
     }).join('');
   }
 
@@ -435,7 +441,7 @@
       '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="07:00"></div>' +
       '<div><label>End</label><input type="time" id="h-end"></div></div>' +
       '<label>Machine</label><select id="h-machine"><option value="">None</option>' +
-      S.data.machines.map(function (x) { return '<option>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+      S.data.machines.map(function (x) { var L = FLAGS[x.status]; return '<option value="' + esc(x.name) + '">' + (L ? L.ic + ' ' : '') + esc(x.name) + (L ? ' (' + L.short + ')' : '') + '</option>'; }).join('') + '</select>' +
       '<div id="h-mwarn" class="sub" style="display:none;color:var(--red);font-weight:600;margin-top:6px"></div>' +
       '<div id="meters" class="two" style="display:none"><div><label>Meter start</label><input inputmode="decimal" id="h-ms"></div>' +
       '<div><label>Meter end</label><input inputmode="decimal" id="h-me"></div></div>' +
@@ -471,7 +477,8 @@
       $('#h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
       $('#h-me').placeholder = 'at end';
       var w = $('#h-mwarn');
-      if (mc && mc.status && mc.status !== 'In Service') { w.style.display = 'block'; w.textContent = mc.status === 'DOWN' ? '\u26d4 This machine is flagged DOWN \u2013 do not run it.' : '\u26a0\ufe0f This machine has a reported problem.'; }
+      var L = mc && FLAGS[mc.status];
+      if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
       else w.style.display = 'none';
     };
   }
@@ -690,7 +697,7 @@
   window.E10K = {
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me,
-    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD
+    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
