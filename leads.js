@@ -29,18 +29,20 @@
     return score >= 3 ? best : '';
   }
 
-  function prompt(t) {
+  function prompt(t, pre) {
+    pre = pre || {};
     var D = A.S.data, leads = (D.leads || []).filter(function (l) { return ['Closed', 'Lost'].indexOf(l.stage) < 0 || l.id === t.lead; });
     var cad = D.cadence || {Hot: 3, Warm: 7, Cold: 30, Nurture: 90};
     var stages = (D.crm && D.crm.stages) || [], kinds = (D.crm && D.crm.activity) || ['Call', 'Text', 'Email', 'Note'];
     var leadId = guessLead(t, leads);
     var lead = function () { return leads.filter(function (l) { return l.id === $('#fu-lead').value; })[0]; };
-    var st = {temp: '', when: 'none', how: 'Call'};
+    var st = {temp: '', when: 'none', how: pre.how || 'Call'};
 
     var html = '<h2>Done \u2013 follow up?</h2><div class="kv">' + esc(t.task) + '</div>' +
-      '<label>How did it go?</label><textarea id="fu-out" style="min-height:70px" placeholder="Tap the mic: talked to her, wants to see it Saturday\u2026"></textarea>' +
+      '<div id="fu-mailbox" style="margin:8px 0"><button class="btn" data-act="mail" style="width:100%">\u2709 Email them first</button></div>' +
+      '<label>How did it go?</label><textarea id="fu-out" style="min-height:70px" placeholder="Tap the mic: talked to her, wants to see it Saturday\u2026">' + esc(pre.outcome || '') + '</textarea>' +
       '<label>How</label><div class="chips" id="fu-how">' + kinds.map(function (k) {
-        return '<button class="chip' + (k === 'Call' ? ' on' : '') + '" data-how="' + esc(k) + '">' + esc(k) + '</button>'; }).join('') + '</div>' +
+        return '<button class="chip' + (k === st.how ? ' on' : '') + '" data-how="' + esc(k) + '">' + esc(k) + '</button>'; }).join('') + '</div>' +
       '<label>Lead</label><select id="fu-lead"><option value="">(not a lead)</option>' + leads.map(function (l) {
         return '<option value="' + esc(l.id) + '"' + (l.id === leadId ? ' selected' : '') + '>' + esc(l.name) + '</option>'; }).join('') + '</select>' +
       '<div id="fu-leadbox">' +
@@ -56,6 +58,12 @@
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save">Done</button></div>';
 
     A.sheet(html, function (act) {
+      if (act === 'mail') {
+        var l0 = lead(); if (!l0) return A.toast('Pick the lead first');
+        return emailForm(l0, t, function (sent) {
+          prompt(t, sent ? {how: 'Email', outcome: 'Emailed: ' + sent.subject} : {});
+        });
+      }
       if (act !== 'save') return A.closeSheet();
       var when = '';
       if (st.when === 'pick') { var v = $('#fu-date').value; if (!v) return A.toast('Pick the follow-up date'); var p = v.split('-'); when = p[1] + '/' + p[2] + '/' + p[0]; }
@@ -91,6 +99,7 @@
     function syncLead() {
       var l = lead();
       $('#fu-leadbox').style.display = l ? 'block' : 'none';
+      $('#fu-mailbox').style.display = l ? 'block' : 'none';
       if (l) { pickTemp(l.temp || 'Warm', true); if (st.when === 'none' && cad[st.temp]) pickWhen(String(cad[st.temp])); }
       if ($('#fu-next').value.indexOf('Follow up with') === 0) $('#fu-next').value = defaultNext();
       summary();
@@ -111,6 +120,67 @@
     syncLead();
     if (!lead()) pickWhen('none');
   }
+
+  // ---------- email a lead ----------
+  function parseDraft(d) {
+    var m = String(d || '').match(/^\s*Subject:\s*(.*)\n+([\s\S]*)$/i);
+    return m ? {subject: m[1].trim(), body: m[2].trim()} : {subject: '', body: String(d || '').trim()};
+  }
+  function firstName(l) {
+    var c = String(l.contact || l.name || '').replace(/\(.*?\)/g, '').trim();
+    if (c.indexOf('&') > 0) return c.split(/\s+/).filter(function (w, i, a) { return i < a.length - 1 || a.length < 3; }).join(' ').replace(/\s*&\s*/, ' and ');
+    return c.split(/\s+/)[0] || 'there';
+  }
+  function fallback(l) {
+    var body = 'Hi ' + firstName(l) + ',\n\nJust checking in' + (l.next && !/^follow up/i.test(l.next) ? ' about ' + l.next.charAt(0).toLowerCase() + l.next.slice(1) : '') +
+      '. Let me know if you have any questions or if there\'s anything I can help with.\n\nThanks,';
+    return {subject: 'Checking in', body: body};
+  }
+
+  function emailForm(l, t, after) {
+    var D = A.S.data, snd = D.reSender || {name: A.me().name, sig: A.me().name};
+    var d = l.draft ? parseDraft(l.draft) : fallback(l);
+    var body = d.body + '\n' + snd.sig;
+    var html = '<h2>Email ' + esc(firstName(l)) + '</h2><div class="kv">' + esc(l.name) + (l.stage ? ' \u00b7 ' + esc(l.stage) : '') + '</div>' +
+      (l.draft ? '<div class="sub">Sam wrote this draft from the lead\'s history. Edit anything.</div>' : '<div class="sub">Quick check-in draft. Edit anything.</div>') +
+      '<label>To</label><input id="le-to" type="email" value="' + esc(l.email || '') + '" placeholder="their@email.com">' +
+      (l.email ? '' : '<div class="sub">No email on file yet. It will be saved to their contact after you send.</div>') +
+      '<label>Subject</label><input id="le-sub" value="' + esc(d.subject) + '">' +
+      '<label>Message</label><textarea id="le-body" style="min-height:300px">' + esc(body) + '</textarea>' +
+      '<div class="sub" style="margin-top:8px"><b>Send</b>: goes from Sam\'s email under your name (' + esc(snd.name) + '); replies and a copy come to ' + esc(snd.reply || 'you') + '. ' +
+      '<b>My email</b>: opens it in your own email app so it comes from your address.</div>' +
+      '<div class="btns"><button class="btn" data-act="back">Back</button><button class="btn" data-act="mailto">My email</button><button class="btn ok" data-act="send">Send</button></div>';
+    A.sheet(html, function (act) {
+      if (act === 'back') return after ? after(null) : A.closeSheet();
+      var to = $('#le-to').value.trim(), sub = $('#le-sub').value.trim(), b = $('#le-body').value;
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+/.test(to)) return A.toast('Enter their email');
+      if (act === 'mailto') {
+        location.href = 'mailto:' + encodeURIComponent(to).replace(/%2C/g, ',') + '?subject=' + encodeURIComponent(sub) + '&body=' + encodeURIComponent(b);
+        return;
+      }
+      if (act !== 'send') return;
+      if (!navigator.onLine) return A.toast('Needs a signal to send');
+      var btn = document.querySelector('#sheet [data-act=send]'); btn.disabled = true; btn.textContent = 'Sending\u2026';
+      A.api('lead.email', {fields: {lead: l.id, to: to, subject: sub, body: b}}).then(function (r) {
+        if (!r.ok) { btn.disabled = false; btn.textContent = 'Send'; return A.toast(r.error === 'bad_email' ? 'That email doesn\'t look right' : 'Didn\'t send \u2013 try again'); }
+        l.last = r.sent; if (!l.email) l.email = to; A.save();
+        A.toast('Sent to ' + to);
+        if (after) after({subject: sub}); else A.closeSheet();
+      }).catch(function () { btn.disabled = false; btn.textContent = 'Send'; A.toast('No signal \u2013 try again'); });
+    });
+  }
+
+  function leadOf(t) {
+    var D = A.S.data; if (!D || !D.leads) return null;
+    var id = guessLead(t, D.leads);
+    return D.leads.filter(function (l) { return l.id === id; })[0] || null;
+  }
+  A.taskExtra = function (t) {
+    if (!A.me().owner || t.entity !== 'Real Estate') return '';
+    var l = leadOf(t); if (!l) return '';
+    return '<div class="btns"><button class="btn" data-act="email" style="width:100%">\u2709 Email ' + esc(firstName(l)) + '</button></div>';
+  };
+  A.onEmail = function (t) { var l = leadOf(t); if (l) emailForm(l, t, null); };
 
   A.onDone = function (t) {
     if (!A.me().owner || t.entity !== 'Real Estate') return false;

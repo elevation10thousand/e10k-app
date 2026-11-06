@@ -300,8 +300,10 @@
       '</div><div class="btns">' +
       (m.owner ? '<button class="btn" data-act="edit">Edit</button>' : '') +
       '<button class="btn" data-act="note">Add note</button>' +
-      '<button class="btn" data-act="status">Status\u2026</button></div>';
+      '<button class="btn" data-act="status">Status\u2026</button></div>' +
+      (window.E10K.taskExtra ? window.E10K.taskExtra(t) : '');
     sheet(html, function (act) {
+      if (act === 'email' && window.E10K.onEmail) return window.E10K.onEmail(t);
       if (act === 'start') return setStatus(t, 'In Progress');
       if (act === 'done') { if (window.E10K.onDone && window.E10K.onDone(t)) return; return setStatus(t, 'Done'); }
       if (act === 'reopen') return setStatus(t, 'In Progress');
