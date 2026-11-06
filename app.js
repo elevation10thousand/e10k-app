@@ -251,11 +251,45 @@
       '<span class="pill ' + (late(t) ? 'late' : statusCls(t.status)) + '">' + pill + '</span></div></div>';
   }
 
+  // ---------- several people on a task ----------
+  function ownersOf(v) { return String(v || '').split(/\s*,\s*/).filter(Boolean); }
+  function isMine(t, m) { var o = ownersOf(t.owner); return o.indexOf(m.name) >= 0 || (m.owner && o.indexOf('Both') >= 0); }
+  function whoChoices() {
+    var m = me(), L = (S.data.lists || {})['Owner'];
+    var list = (S.data.people || []).slice();
+    if (m.owner && L) L.forEach(function (x) { if (list.indexOf(x) < 0) list.push(x); });
+    return list;
+  }
+  function whoPicker(id, cur) {
+    var sel = ownersOf(cur);
+    return '<div class="chips" id="' + id + '" style="flex-wrap:wrap">' + whoChoices().map(function (n) {
+      return '<button class="chip' + (sel.indexOf(n) >= 0 ? ' on' : '') + '" data-who="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') + '</div>';
+  }
+  function wireWho(id) {
+    var box = document.getElementById(id);
+    box.onclick = function (e) { var b = e.target.closest('[data-who]'); if (!b) return; e.stopPropagation(); b.classList.toggle('on'); };
+    return function () { return Array.prototype.map.call(box.querySelectorAll('.chip.on'), function (b) { return b.getAttribute('data-who'); }); };
+  }
+  function assignForm(t) {
+    sheet('<h2>Who\u2019s on it?</h2><div class="kv">' + esc(t.task) + '</div><div class="sub" style="margin:6px 0">Tap everyone who should do this. New people get a phone alert.</div>' +
+      whoPicker('as-who', t.owner) +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>', function (act) {
+      if (act !== 'save') return closeSheet();
+      var who = get(); if (!who.length) return toast('Pick at least one person');
+      var before = ownersOf(t.owner), added = who.filter(function (x) { return before.indexOf(x) < 0 && x !== me().name; });
+      t.owner = who.join(', ');
+      enqueue('task.assign', {id: t.id, owners: who});
+      save(); closeSheet(); render();
+      toast(added.length ? 'Sent to ' + added.join(', ') : 'Saved');
+    });
+    var get = wireWho('as-who');
+  }
+
   function renderTasks() {
     var all = S.data.tasks || [], m = me();
     var list = all.filter(function (t) {
       if (S.tab === 'mine') {
-        if (t.owner !== m.name && !(m.owner && t.owner === 'Both')) return false;
+        if (!isMine(t, m)) return false;
         return t.status !== 'Done' || t.completed === todayStr();
       }
       return t.status !== 'Done';
@@ -328,6 +362,7 @@
       (t.status === 'Not Started' ? '<button class="btn go" data-act="start">Start</button>' : '') +
       (t.status !== 'Done' ? '<button class="btn ok" data-act="done">Done</button>' : '<button class="btn" data-act="reopen">Reopen</button>') +
       '</div><div class="btns">' +
+      '<button class="btn" data-act="assign">\ud83d\udc65 Assign</button>' +
       (m.owner ? '<button class="btn" data-act="edit">Edit</button>' : '') +
       '<button class="btn" data-act="note">Add note</button>' +
       '<button class="btn" data-act="status">Status\u2026</button></div>' +
@@ -338,6 +373,7 @@
       if (act === 'done') { if (window.E10K.onDone && window.E10K.onDone(t)) return; return setStatus(t, 'Done'); }
       if (act === 'reopen') return setStatus(t, 'In Progress');
       if (act === 'edit') return taskForm(t);
+      if (act === 'assign') return assignForm(t);
       if (act === 'note') return noteForm(t);
       if (act === 'status') return statusForm(t);
     });
@@ -387,13 +423,13 @@
         '<datalist id="joblist">' + jobs.map(function (j) { return '<option value="' + esc(j) + '">'; }).join('') + '</datalist>'
       : '<label>Job</label><select id="f-job">' + options(jobs, t.job || ls.get('lastJob', ''), true) + '</select>') +
       '<label>Area / room</label><input id="f-area" value="' + esc(t.area || '') + '">' +
-      (m.owner ? '<div class="two"><div><label>Who</label><select id="f-owner">' + options(L['Owner'] || S.data.people, t.owner) + '</select></div>' +
-        '<div><label>Priority</label><select id="f-pri">' + options(L['Priority'] || ['High', 'Medium', 'Low'], t.priority) + '</select></div></div>' +
+      (m.owner ? '<label>Who <span class="sub">(tap one or more)</span></label>' + whoPicker('f-who', t.owner) +
+        '<label>Priority</label><select id="f-pri">' + options(L['Priority'] || ['High', 'Medium', 'Low'], t.priority) + '</select>' +
         '<div class="two"><div><label>Due</label><input type="date" id="f-due" value="' + usToIso(t.due) + '"></div>' +
         '<div><label>Status</label><select id="f-status">' + options(L['Status'], t.status) + '</select></div></div>' +
         '<label>Phase / category</label><select id="f-phase">' + options(L['Phase / Category'], t.phase, true) + '</select>'
-      : (isNew ? '<div class="two"><div><label>Who</label><select id="f-owner">' + options(S.data.people, m.name) + '</select></div>' +
-        '<div><label>Priority</label><select id="f-pri">' + options(['High', 'Medium', 'Low'], 'Medium') + '</select></div></div>' +
+      : (isNew ? '<label>Who <span class="sub">(tap one or more)</span></label>' + whoPicker('f-who', m.name) +
+        '<label>Priority</label><select id="f-pri">' + options(['High', 'Medium', 'Low'], 'Medium') + '</select>' +
         '<label>Due</label><input type="date" id="f-due">' : '')) +
       (isNew || !m.owner ? '' : '<label>Notes</label><textarea id="f-notes">' + esc(t.notes || '') + '</textarea>') +
       (isNew ? '<label>Notes</label><textarea id="f-notes" placeholder="Optional"></textarea>' : '') +
@@ -403,10 +439,12 @@
       var f = {task: $('#f-task').value.trim(), job: $('#f-job').value.trim(), area: $('#f-area').value.trim()};
       if (!f.task) return toast('Type the task first');
       if (m.owner) {
-        f.entity = $('#f-entity').value; f.owner = $('#f-owner').value; f.priority = $('#f-pri').value;
+        f.entity = $('#f-entity').value; f.owners = getWho(); f.owner = f.owners.join(', '); f.priority = $('#f-pri').value;
+        if (!f.owners.length) return toast('Pick who it\u2019s for');
         f.due = isoToUs($('#f-due').value); f.status = $('#f-status').value; f.phase = $('#f-phase').value;
       } else if (isNew) {
-        f.owner = $('#f-owner').value; f.priority = $('#f-pri').value; f.due = isoToUs($('#f-due').value);
+        f.owners = getWho(); f.owner = f.owners.join(', '); f.priority = $('#f-pri').value; f.due = isoToUs($('#f-due').value);
+        if (!f.owners.length) return toast('Pick who it\u2019s for');
         if (!f.job) return toast('Pick the job');
       }
       if ($('#f-notes')) f.notes = $('#f-notes').value.trim();
@@ -414,7 +452,8 @@
         var temp = Object.assign({id: 'new-' + uid(), added: todayStr(), status: 'Not Started', owner: m.name, entity: 'E10K', priority: 'Medium'}, f);
         S.data.tasks.push(temp);
         enqueue('task.create', {fields: f, tempId: temp.id});
-        toast(f.owner && f.owner !== m.name ? 'Sent to ' + f.owner : 'Added');
+        var oth = (f.owners || []).filter(function (x) { return x !== m.name; });
+        toast(oth.length ? 'Sent to ' + oth.join(', ') : 'Added');
       } else {
         Object.assign(t, f);
         if (f.status === 'Done' && !t.completed) t.completed = todayStr();
@@ -423,6 +462,7 @@
       }
       save(); closeSheet(); render();
     });
+    var getWho = document.getElementById('f-who') ? wireWho('f-who') : function () { return ownersOf(t.owner); };
   }
 
   // ---------- hours ----------
