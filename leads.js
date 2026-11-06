@@ -138,17 +138,21 @@
   }
 
   function emailForm(l, t, after) {
-    var D = A.S.data, snd = D.reSender || {name: A.me().name, sig: A.me().name};
+    var D = A.S.data, all = D.reSenders || {};
+    var who = (l.from && all[l.from]) ? l.from : A.me().name;
+    var snd = all[who] || D.reSender || {name: A.me().name, sig: A.me().name};
     var d = l.draft ? parseDraft(l.draft) : fallback(l);
     var body = d.body + '\n' + snd.sig;
+    var names = Object.keys(all);
     var html = '<h2>Email ' + esc(firstName(l)) + '</h2><div class="kv">' + esc(l.name) + (l.stage ? ' \u00b7 ' + esc(l.stage) : '') + '</div>' +
       (l.draft ? '<div class="sub">Sam wrote this draft from the lead\'s history. Edit anything.</div>' : '<div class="sub">Quick check-in draft. Edit anything.</div>') +
+      (names.length > 1 ? '<label>From</label><div class="chips" id="le-from">' + names.map(function (n) {
+        return '<button class="chip' + (n === who ? ' on' : '') + '" data-from="' + esc(n) + '">' + esc(all[n].name) + '</button>'; }).join('') + '</div>' : '') +
       '<label>To</label><input id="le-to" type="email" value="' + esc(l.email || '') + '" placeholder="their@email.com">' +
       (l.email ? '' : '<div class="sub">No email on file yet. It will be saved to their contact after you send.</div>') +
       '<label>Subject</label><input id="le-sub" value="' + esc(d.subject) + '">' +
       '<label>Message</label><textarea id="le-body" style="min-height:300px">' + esc(body) + '</textarea>' +
-      '<div class="sub" style="margin-top:8px"><b>Send</b>: goes from Sam\'s email under your name (' + esc(snd.name) + '); replies and a copy come to ' + esc(snd.reply || 'you') + '. ' +
-      '<b>My email</b>: opens it in your own email app so it comes from your address.</div>' +
+      '<div class="sub" style="margin-top:8px" id="le-how"></div>' +
       '<div class="btns"><button class="btn" data-act="back">Back</button><button class="btn" data-act="mailto">My email</button><button class="btn ok" data-act="send">Send</button></div>';
     A.sheet(html, function (act) {
       if (act === 'back') return after ? after(null) : A.closeSheet();
@@ -156,26 +160,41 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+/.test(to)) return A.toast('Enter their email');
       if (act === 'mailto') {
         location.href = 'mailto:' + encodeURIComponent(to).replace(/%2C/g, ',') + '?subject=' + encodeURIComponent(sub) + '&body=' + encodeURIComponent(b);
-        return setTimeout(function () { askLogged(l, to, sub, b, after); }, 600);
+        return setTimeout(function () { askLogged(l, to, sub, b, after, who); }, 600);
       }
       if (act !== 'send') return;
       if (!navigator.onLine) return A.toast('Needs a signal to send');
       var btn = document.querySelector('#sheet [data-act=send]'); btn.disabled = true; btn.textContent = 'Sending\u2026';
-      A.api('lead.email', {fields: {lead: l.id, to: to, subject: sub, body: b}}).then(function (r) {
+      A.api('lead.email', {fields: {lead: l.id, to: to, subject: sub, body: b, from: who}}).then(function (r) {
         if (!r.ok) { btn.disabled = false; btn.textContent = 'Send'; return A.toast(r.error === 'bad_email' ? 'That email doesn\'t look right' : 'Didn\'t send \u2013 try again'); }
         l.last = r.sent; if (!l.email) l.email = to; A.save();
         A.toast('Sent to ' + to);
         if (after) after({subject: sub}); else A.closeSheet();
       }).catch(function () { btn.disabled = false; btn.textContent = 'Send'; A.toast('No signal \u2013 try again'); });
     });
+    function how() {
+      $('#le-how').innerHTML = '<b>Send</b>: goes from Sam\'s email as ' + esc(snd.name) + '; replies and a copy go to ' + esc(snd.reply || 'you') + '. ' +
+        '<b>My email</b>: opens it in your own email app, then asks if you sent it so it still gets logged.';
+    }
+    how();
+    var fr = document.getElementById('le-from');
+    if (fr) fr.onclick = function (e) {
+      var b = e.target.closest('[data-from]'); if (!b) return; e.stopPropagation();
+      var nw = b.getAttribute('data-from'); if (nw === who) return;
+      var ta = $('#le-body'), old = snd.sig;
+      who = nw; snd = all[nw];
+      if (ta.value.indexOf(old) >= 0) ta.value = ta.value.replace(old, snd.sig);
+      Array.prototype.forEach.call(fr.querySelectorAll('[data-from]'), function (x) { x.classList.toggle('on', x === b); });
+      how();
+    };
   }
 
-  function askLogged(l, to, sub, b, after) {
+  function askLogged(l, to, sub, b, after, who) {
     A.sheet('<h2>Did you send it?</h2><div class="kv">To ' + esc(to) + '<br>' + esc(sub) + '</div>' +
       '<div class="sub">Tap Yes once it\'s sent from your email and it gets logged on ' + esc(firstName(l)) + '\'s lead.</div>' +
       '<div class="btns"><button class="btn" data-act="no">Not sent</button><button class="btn ok" data-act="yes">Yes, log it</button></div>', function (act) {
       if (act !== 'yes') return after ? after(null) : A.closeSheet();
-      A.enqueue('lead.email', {fields: {lead: l.id, to: to, subject: sub, body: b, logOnly: true}});
+      A.enqueue('lead.email', {fields: {lead: l.id, to: to, subject: sub, body: b, logOnly: true, from: who}});
       l.last = A.todayStr(); if (!l.email) l.email = to; A.save();
       A.toast('Logged');
       if (after) after({subject: sub}); else A.closeSheet();
