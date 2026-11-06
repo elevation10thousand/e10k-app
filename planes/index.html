@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Thomas Planes</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="../favicon.png">
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#07090d; --card:#11151c; --card2:#181e27; --ink:#e9eef5; --mute:#8b97a8; --line:#232b37; --blue:#4da3ff;
+          --red:#ff5a52; --redbg:rgba(255,90,82,.14); --amber:#ffb340; --amberbg:rgba(255,179,64,.13); --green:#3fd28a; --greenbg:rgba(63,210,138,.12); }
+  * { box-sizing:border-box; }
+  html, body { background:var(--bg); }
+  body { margin:0; font:15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--ink); }
+  header { background:#000; color:#fff; padding:12px 14px 0; position:sticky; top:0; z-index:5; border-bottom:1px solid var(--line); }
+  header h1 { margin:0 0 8px; font-size:18px; letter-spacing:2px; text-transform:uppercase; }
+  header h1 .logo { color:var(--blue); margin-right:4px; }
+  header h1 small { font-weight:400; opacity:.55; font-size:12px; margin-left:6px; letter-spacing:0; text-transform:none; }
+  .planes { display:flex; gap:6px; padding-bottom:10px; overflow-x:auto; }
+  .planes button { border:1px solid #3a4352; background:transparent; color:#cfd6e0; border-radius:16px; padding:5px 14px; font-size:14px; white-space:nowrap; letter-spacing:.5px; }
+  .planes button.on { background:var(--blue); border-color:var(--blue); color:#000; font-weight:700; }
+  nav { display:flex; background:#000; overflow-x:auto; margin:0 -14px; border-top:1px solid var(--line); }
+  nav button { flex:1; border:0; background:none; padding:11px 8px; font-size:14px; color:var(--mute); border-bottom:3px solid transparent; white-space:nowrap; }
+  nav button.on { color:#fff; border-bottom-color:var(--blue); font-weight:600; }
+  main { padding:12px; max-width:760px; margin:0 auto; }
+  .hero { position:relative; height:230px; border-radius:14px; overflow:hidden; margin-bottom:12px; background:#1a2230 center/cover no-repeat; }
+  .hero.short { height:120px; }
+  .hero::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,.05) 30%, rgba(0,0,0,.85) 100%); }
+  .hero .cap { position:absolute; left:14px; right:14px; bottom:12px; z-index:1; }
+  .hero .cap b { display:block; font-size:30px; letter-spacing:2px; line-height:1.1; }
+  .hero.short .cap b { font-size:20px; letter-spacing:1px; }
+  .hero .cap span { color:#c9d2de; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:12px; margin:0 0 10px; color:var(--mute); text-transform:uppercase; letter-spacing:1.2px; }
+  .meters { display:grid; grid-template-columns:repeat(auto-fit, minmax(100px,1fr)); gap:10px; }
+  .meter { background:var(--card2); border-radius:10px; padding:10px; text-align:center; }
+  .meter b { display:block; font-size:24px; font-variant-numeric:tabular-nums; color:#fff; }
+  .meter span { color:var(--mute); font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+  .banner { border-radius:10px; padding:10px 12px; margin-bottom:12px; font-weight:600; border:1px solid transparent; }
+  .banner.red { background:var(--redbg); color:var(--red); border-color:rgba(255,90,82,.35); }
+  .banner.amber { background:var(--amberbg); color:var(--amber); border-color:rgba(255,179,64,.3); }
+  .banner.green { background:var(--greenbg); color:var(--green); border-color:rgba(63,210,138,.3); }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); cursor:pointer; }
+  .row:first-of-type { border-top:0; }
+  .row .main { flex:1; min-width:0; }
+  .row .sub { color:var(--mute); font-size:13px; }
+  .pill { font-size:12px; border-radius:10px; padding:2px 8px; font-weight:600; white-space:nowrap; }
+  .pill.overdue { background:var(--redbg); color:var(--red); }
+  .pill.soon { background:var(--amberbg); color:var(--amber); }
+  .pill.ok { background:var(--greenbg); color:var(--green); }
+  .pill.unknown { background:var(--card2); color:var(--mute); }
+  label { display:block; font-size:12px; color:var(--mute); margin:10px 0 4px; text-transform:uppercase; letter-spacing:.6px; }
+  input, select, textarea { width:100%; padding:10px; border:1px solid #2c3543; border-radius:8px; font-size:16px; background:#0b0f15; color:var(--ink); color-scheme:dark; }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:var(--blue); }
+  textarea { min-height:70px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .grid2 label, .grid3 label { margin-top:6px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .btn { display:inline-block; border:0; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:700; background:var(--blue); color:#000; cursor:pointer; }
+  .btn.full { width:100%; margin-top:14px; }
+  .btn.ghost { background:var(--card2); color:var(--blue); border:1px solid #2c3543; }
+  .btn.small { padding:6px 10px; font-size:13px; }
+  .btn.danger { background:var(--redbg); color:var(--red); }
+  .btn:disabled { opacity:.5; }
+  .hint { color:var(--mute); font-size:13px; margin-top:4px; }
+  .warn { color:var(--amber); font-size:13px; margin-top:4px; }
+  .check { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:15px; color:var(--ink); }
+  .check input { width:auto; transform:scale(1.3); accent-color:var(--blue); }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:var(--blue); color:#000; font-weight:600; padding:10px 16px; border-radius:20px; display:none; z-index:20; max-width:90%; }
+  #toast.err { background:var(--red); color:#fff; }
+  #loading { text-align:center; color:var(--mute); padding:40px 0; }
+  .sheet { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; z-index:10; align-items:flex-end; justify-content:center; }
+  .sheet .panel { background:var(--card); border:1px solid var(--line); border-bottom:0; width:100%; max-width:760px; max-height:92vh; overflow:auto; border-radius:16px 16px 0 0; padding:16px; }
+  .sheet .panel h3 { margin:0 0 6px; }
+  table.bills { width:100%; border-collapse:collapse; font-size:14px; }
+  table.bills td, table.bills th { text-align:right; padding:6px 4px; border-top:1px solid var(--line); }
+  table.bills th { color:var(--mute); font-weight:500; }
+  table.bills td:first-child, table.bills th:first-child { text-align:left; }
+  .muted { color:var(--mute); }
+  a { color:var(--blue); }
+  footer { text-align:center; padding:6px 0 24px; font-size:12px; }
+  footer a { color:var(--mute); }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="logo">✈</span>Thomas Planes <small id="who"></small></h1>
+  <div class="planes" id="planes"></div>
+  <nav id="nav"></nav>
+</header>
+<main id="main"><div id="loading">Loading…</div></main>
+<div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
+<div id="toast"></div>
+
+<script>
+var PHOTOS = {
+ "182a": {
+  "id": "1TCXDaPhk90AAawhFjlw6cHz3lg1Q5DJt",
+  "by": "Eddie Maloney from  North Las Vegas, USA",
+  "lic": "CC BY-SA 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File:EM_PRIVATE_(2828894871).jpg"
+ },
+ "182b": {
+  "id": "1GJc-tchzcvDuFXv_HFiy5WziUMXN4ILq",
+  "by": "Josh Beasley",
+  "lic": "CC BY 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File:Civil_Air_Patrol_-_Cessna_182_Skylane_-_N371CP.jpg"
+ },
+ "cuba": {
+  "id": "1dOGEttCVVcunQEkOeTAiSGLLCmoirhL3",
+  "by": "Oren Rozen",
+  "lic": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File:CF15_Piper_PA-18_Super_Cub_ZK-BOY_040415_01.jpg"
+ },
+ "cubb": {
+  "id": "1Oc2Qi7dufLNS8yFqDDjLizPBz8gd7VOW",
+  "by": "U.S. Fish and Wildlife Service",
+  "lic": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Piper_Super_Cub_monoplane_in_flight.jpg"
+ },
+ "sky1": {
+  "id": "1bvT8X79AOODTJWL3oHtqGMpFy8F8wSyL",
+  "by": "Ken Lund from Reno, Nevada, USA",
+  "lic": "CC BY-SA 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File:Northern_End_of_San_Luis_Valley,_Colorado_(7235128470).jpg"
+ },
+ "sky2": {
+  "id": "1ZAlncA2HaqxR8jrrQzCSxgRDRpY7M7IP",
+  "by": "Ken Lund from Reno, Nevada, USA",
+  "lic": "CC BY-SA 2.0",
+  "page": "https://commons.wikimedia.org/wiki/File:Airplane_Flying_Over_Black_Canyon_of_the_Gunnison_National_Park,_Colorado_(9181498826).jpg"
+ }
+};
+var PLANE_PHOTOS = { N2037R: ['182a', '182b'], N4116T: ['cuba', 'cubb'] };
+var SKY = ['sky1', 'sky2'];
+var PICK = Math.floor(Math.random() * 2);
+var PHOTO_CACHE = {};
+function hero(key, title, sub, short) {
+  return '<div class="hero' + (short ? ' short' : '') + '" data-photo="' + key + '"><div class="cap"><b>' + esc(title) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div></div>';
+}
+function setPhotos() {
+  document.querySelectorAll('.hero[data-photo]').forEach(function (el) {
+    var k = el.getAttribute('data-photo'), ck = 'hangarPhoto1:' + k;
+    var apply = function (url) { if (url) { PHOTO_CACHE[k] = url; el.style.backgroundImage = 'url(' + url + ')'; } };
+    if (PHOTO_CACHE[k]) return apply(PHOTO_CACHE[k]);
+    try { var c = localStorage.getItem(ck); if (c) return apply(c); } catch (e) {}
+    var got = function (url) { apply(url); try { localStorage.setItem(ck, url); } catch (e) {} };
+    apply('img/' + k + '.jpg');
+  });
+}
+function planePhoto(n) { var a = PLANE_PHOTOS[S.tail] || SKY; return a[(PICK + (n || 0)) % a.length]; }
+function credits() {
+  openSheet('<h3>Photo credits</h3><div class="hint">Stock photos from Wikimedia Commons (not your planes).</div>' + Object.keys(PHOTOS).map(function (k) {
+    var p = PHOTOS[k]; return '<div class="row"><div class="main"><b>' + esc(p.by) + '</b><div class="sub">' + esc(p.lic) + ' · <a href="' + esc(p.page) + '" target="_blank">source</a></div></div></div>';
+  }).join('') + '<button class="btn ghost full" onclick="closeSheet()">Close</button>');
+}
+var API = 'https://script.google.com/macros/s/AKfycbxkbNeFYayitjUo9vF-V76J2NGIWmYLFXSPMoq3ZL9V4y32lXrZ7k5HvqmzHL3HCmUg/exec';
+var TOKEN = (function () {
+  var m = location.hash.match(/t=([A-Za-z0-9_-]+)/), t = m ? m[1] : '';
+  try { if (t) localStorage.setItem('planesToken', t); else t = localStorage.getItem('planesToken') || ''; } catch (e) {}
+  return t;
+})();
+var S = { planes: [], tail: null, st: null, view: 'home' };
+var VIEWS = [['home','Status'],['flight','Fly'],['squawks','Squawks'],['maint','Maint'],['bills','Bills'],['history','History']];
+
+function call(action, data) {
+  return fetch(API, { method: 'POST', body: JSON.stringify({ action: 'planes', a: action, tail: S.tail, data: data || null, token: TOKEN }) })
+    .then(function (r) { return r.json(); })
+    .then(function (r) { if (r.ok) return r.data; throw new Error(r.error || 'Something went wrong'); });
+}
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function fmt(n, d) { return n == null || n === '' ? '—' : Number(n).toFixed(d == null ? 1 : d); }
+function money(n) { return n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function niceDate(s) { if (!s) return '—'; var p = s.split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) + '/' + p[0].slice(2) : s; }
+function monthName(m) { var p = m.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1] + ' ' + p[0]; }
+function toast(msg, err) { var t = $('toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = 'none'; }, err ? 6000 : 2500); }
+function val(id) { var e = $(id); return e ? e.value.trim() : ''; }
+function openSheet(html) { $('panel').innerHTML = html; $('sheet').style.display = 'flex'; }
+function closeSheet() { $('sheet').style.display = 'none'; }
+$('sheet').addEventListener('click', function (e) { if (e.target.id === 'sheet') closeSheet(); });
+
+function init() {
+  call('planes').then(function (r) {
+    S.planes = r.planes;
+    $('who').textContent = r.me || '';
+    if (!S.planes.length) {
+      var h = '<div class="card">';
+      if (r.authUrl) {
+        h += '<b>One more step.</b> Google didn\'t give Thomas Planes permission to open the plane sheets. ' +
+             '<a href="' + esc(r.authUrl) + '" target="_blank" rel="noopener" style="color:#4da3ff">Tap here to allow it</a>' +
+             ' (tick every box, including the one about Google Sheets), then come back and reload this page.';
+      } else {
+        h += 'No aircraft are set up for ' + esc(r.me || 'this link') + ' yet. Ask Spencer.';
+      }
+      if (r.errors && r.errors.length) h += '<div style="margin-top:10px;font-size:12px;color:#8a94a6">Details for Sam: ' + esc(r.errors.join(' | ')) + '</div>';
+      $('main').innerHTML = h + '</div>'; return;
+    }
+    var saved = null; try { saved = localStorage.getItem('hangarTail'); } catch (e) {}
+    S.tail = S.planes.some(function (p) { return p.tail === saved; }) ? saved : S.planes[0].tail;
+    renderPlanes(); load();
+  }).catch(function (e) { $('main').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
+}
+function renderPlanes() {
+  $('planes').innerHTML = S.planes.map(function (p) {
+    return '<button class="' + (p.tail === S.tail ? 'on' : '') + '" onclick="pickPlane(\'' + p.tail + '\')">' + esc(p.tail) + '</button>';
+  }).join('');
+}
+function pickPlane(t) { S.tail = t; try { localStorage.setItem('hangarTail', t); } catch (e) {} S.view = 'home'; renderPlanes(); load(); }
+function load() {
+  $('main').innerHTML = '<div id="loading">Loading ' + esc(S.tail) + '…</div>';
+  call('state').then(function (st) { S.st = st; render(); }).catch(function (e) { $('main').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
+}
+function act(action, data, msg) {
+  return call(action, data).then(function (st) { S.st = st; closeSheet(); toast(msg || 'Saved'); render(); return st; })
+    .catch(function (e) { toast(e.message, true); throw e; });
+}
+function go(v) { S.view = v; render(); window.scrollTo(0, 0); }
+function render() {
+  var st = S.st;
+  $('nav').innerHTML = VIEWS.filter(function (v) { return v[0] !== 'bills' || st.billing; }).map(function (v) {
+    return '<button class="' + (S.view === v[0] ? 'on' : '') + '" onclick="go(\'' + v[0] + '\')">' + v[1] + '</button>';
+  }).join('');
+  var f = { home: vHome, flight: vFlight, squawks: vSquawks, maint: vMaint, bills: vBills, history: vHistory }[S.view] || vHome;
+  var top = '';
+  if (S.view === 'home') top = hero(planePhoto(0), st.tail, st.aircraft);
+  else if (S.view === 'flight') top = hero(SKY[PICK], 'Log a flight', st.tail, true);
+  else top = hero(planePhoto(1), { squawks: 'Squawks', maint: 'Maintenance', bills: 'Bills', history: 'History' }[S.view] || '', st.tail, true);
+  $('main').innerHTML = top + f(st) + '<footer><a href="javascript:void(0)" onclick="credits()">Photo credits</a></footer>';
+  if (S.view === 'flight') flightCalc();
+  setPhotos();
+}
+
+function dueText(it) {
+  var a = [];
+  if (it.dueDate) a.push(niceDate(it.dueDate) + (it.daysLeft != null ? (it.daysLeft < 0 ? ' (' + (-it.daysLeft) + ' days over)' : ' (' + it.daysLeft + ' days)') : ''));
+  if (it.dueTach != null) a.push('tach ' + fmt(it.dueTach) + (it.hoursLeft != null ? (it.hoursLeft < 0 ? ' (' + fmt(-it.hoursLeft) + ' hrs over)' : ' (' + fmt(it.hoursLeft) + ' hrs)') : ''));
+  return a.length ? a.join(' · ') : 'Due date unknown — tap to enter';
+}
+function pillText(s) { return { overdue: 'Overdue', soon: 'Due soon', ok: 'OK', unknown: 'Need info' }[s]; }
+
+function vHome(st) {
+  var h = '';
+  var over = st.items.filter(function (i) { return i.status === 'overdue'; });
+  var soon = st.items.filter(function (i) { return i.status === 'soon'; });
+  if (st.grounded) h += '<div class="banner red">⛔ Grounding squawk open — see Squawks</div>';
+  if (over.length) h += '<div class="banner red">Overdue: ' + over.map(function (i) { return esc(i.item); }).join(', ') + '</div>';
+  if (!st.grounded && !over.length) h += '<div class="banner ' + (soon.length ? 'amber' : 'green') + '">' + (soon.length ? soon.length + ' item' + (soon.length > 1 ? 's' : '') + ' due soon' : 'Nothing overdue') + '</div>';
+  var unk = st.items.filter(function (i) { return i.status === 'unknown'; }).length;
+  if (unk) h += '<div class="banner amber" onclick="go(\'maint\')" style="font-weight:400">' + unk + ' maintenance item' + (unk > 1 ? 's need' : ' needs') + ' a last-done date — tap to fill in</div>';
+  h += '<div class="card"><h2>Now</h2><div class="meters">';
+  if (st.trackHobbs) h += '<div class="meter"><b>' + fmt(st.hobbsNow) + '</b><span>Hobbs</span></div>';
+  h += '<div class="meter"><b>' + fmt(st.tachNow) + '</b><span>Tach</span></div>';
+  if (st.fuel) h += '<div class="meter"><b>' + fmt(st.fuel.L, 0) + ' / ' + fmt(st.fuel.R, 0) + '</b><span>Fuel L / R (gal)</span></div>';
+  h += '</div>';
+  if (st.last) h += '<div class="hint">Last flight ' + niceDate(st.last.date) + ' by ' + esc(st.last.pilot) + (st.last.from ? ' · ' + esc(st.last.from) + '→' + esc(st.last.to) : '') + '</div>';
+  h += '<button class="btn full" onclick="go(\'flight\')">Log a flight</button></div>';
+
+  h += '<div class="card"><h2>Coming due</h2>';
+  st.items.slice(0, 6).forEach(function (it) { h += itemRow(it); });
+  h += '<button class="btn ghost small" style="margin-top:8px" onclick="go(\'maint\')">All maintenance</button></div>';
+
+  var open = st.squawks.filter(function (q) { return !/^(fixed|closed)$/i.test(q.status); });
+  h += '<div class="card"><h2>Open squawks (' + open.length + ')</h2>';
+  if (!open.length) h += '<div class="muted">None</div>';
+  open.forEach(function (q) { h += sqRow(q); });
+  h += '<button class="btn ghost small" style="margin-top:8px" onclick="newSquawk()">+ Add squawk</button></div>';
+
+  if (st.billing && st.bills) {
+    var cur = st.today.slice(0, 7);
+    var rows = st.bills.rows.filter(function (b) { return b.month === cur; });
+    h += '<div class="card"><h2>' + monthName(cur) + ' so far</h2>';
+    rows.forEach(function (b) { h += '<div class="row"><div class="main"><b>' + esc(b.company) + '</b><div class="sub">' + fmt(b.hours) + ' hrs × ' + money(b.rate) + ' + ' + money(b.monthly) + ' monthly</div></div><b>' + money(b.total) + '</b></div>'; });
+    h += '</div>';
+  }
+  return h;
+}
+
+function itemRow(it) {
+  return '<div class="row" onclick="itemSheet(\'' + it.id + '\')"><div class="main"><b>' + esc(it.item) + '</b><div class="sub">' + esc(dueText(it)) + '</div></div><span class="pill ' + it.status + '">' + pillText(it.status) + '</span></div>';
+}
+function sqRow(q) {
+  var open = !/^(fixed|closed)$/i.test(q.status);
+  return '<div class="row" onclick="sqSheet(\'' + q.id + '\')"><div class="main"><b>' + (q.grounded && open ? '⛔ ' : '') + esc(q.squawk) + '</b><div class="sub">' + niceDate(q.date) + ' · ' + esc(q.by) + (open ? '' : ' · fixed ' + niceDate(q.fixedDate)) + '</div></div><span class="pill ' + (open ? (q.grounded ? 'overdue' : 'soon') : 'ok') + '">' + esc(open ? q.status : 'Fixed') + '</span></div>';
+}
+
+// ----- flight form -----
+function vFlight(st) {
+  var last = st.last || {};
+  var fuelL = last.fuelEndL != null ? last.fuelEndL : '', fuelR = last.fuelEndR != null ? last.fuelEndR : '';
+  var h = '<div class="card">';
+  h += '<div class="grid2"><div><label>Date</label><input type="date" id="f_date" value="' + st.today + '"></div>';
+  h += '<div><label>Pilot</label><select id="f_pilot">' + st.pilots.map(function (p) { return '<option' + (p.Name === st.myPilot ? ' selected' : '') + '>' + esc(p.Name) + '</option>'; }).join('') + '</select></div></div>';
+  h += '<div class="grid3"><div><label>From</label><input id="f_from" placeholder="20V" value="' + esc(last.to || '') + '"></div><div><label>To</label><input id="f_to" placeholder="KAPA"></div>';
+  h += '<div><label>Type</label><select id="f_type"><option>Local</option><option>Cross Country</option><option>Training</option><option>Maintenance</option><option>Other</option></select></div></div>';
+  if (st.trackHobbs) {
+    h += '<div class="grid2"><div><label>Hobbs start</label><input id="f_hs" inputmode="decimal" value="' + (st.hobbsNow != null ? st.hobbsNow : '') + '" oninput="flightCalc()"></div>';
+    h += '<div><label>Hobbs end</label><input id="f_he" inputmode="decimal" oninput="flightCalc()"></div></div>';
+  }
+  h += '<div class="grid2"><div><label>Tach start</label><input id="f_ts" inputmode="decimal" value="' + (st.tachNow != null ? st.tachNow : '') + '" oninput="flightCalc()"></div>';
+  h += '<div><label>Tach end</label><input id="f_te" inputmode="decimal" oninput="flightCalc()"></div></div>';
+  h += '<div id="f_calc" class="hint"></div>';
+  h += '<div class="grid2"><div><label>Oil before (qt)</label><input id="f_ob" inputmode="decimal"></div><div><label>Oil added (qt)</label><input id="f_oa" inputmode="decimal"></div></div>';
+  h += '<label style="margin-top:14px"><b>Fuel (gallons)</b></label>';
+  h += '<div class="grid2"><div><label>Start left</label><input id="f_sl" inputmode="decimal" value="' + fuelL + '" oninput="flightCalc()"></div><div><label>Start right</label><input id="f_sr" inputmode="decimal" value="' + fuelR + '" oninput="flightCalc()"></div></div>';
+  h += '<label>Fuel added during the trip</label><input id="f_fa" inputmode="decimal" oninput="flightCalc()">';
+  h += '<div class="grid2"><div><label>End left</label><input id="f_el" inputmode="decimal" oninput="flightCalc()"></div><div><label>End right</label><input id="f_er" inputmode="decimal" oninput="flightCalc()"></div></div>';
+  h += '<div id="f_fuel" class="hint"></div>';
+  h += '<label>Notes</label><textarea id="f_notes" placeholder="Anything worth knowing"></textarea>';
+  h += '<div class="check"><input type="checkbox" id="f_sq"><span>I have a squawk to report</span></div>';
+  h += '<button class="btn full" id="f_save" onclick="saveFlight()">Save flight</button></div>';
+  return h;
+}
+function num(id) { var v = val(id); return v === '' ? null : Number(v); }
+function flightCalc() {
+  var st = S.st, msg = [], warn = '';
+  var hs = num('f_hs'), he = num('f_he'), ts = num('f_ts'), te = num('f_te');
+  if (hs != null && he != null) msg.push('Hobbs ' + (he - hs).toFixed(1) + ' hrs');
+  if (ts != null && te != null) msg.push('Tach ' + (te - ts).toFixed(2) + ' hrs');
+  if (st.trackHobbs && hs != null && st.hobbsNow != null && Math.abs(hs - st.hobbsNow) > 0.05) warn = 'Hobbs start does not match the last recorded ' + fmt(st.hobbsNow) + ' — a flight may be missing.';
+  else if (ts != null && st.tachNow != null && Math.abs(ts - st.tachNow) > 0.05) warn = 'Tach start does not match the last recorded ' + fmt(st.tachNow) + '.';
+  var c = $('f_calc'); if (c) c.innerHTML = esc(msg.join(' · ')) + (warn ? '<div class="warn">' + esc(warn) + '</div>' : '');
+  var sl = num('f_sl'), sr = num('f_sr'), el = num('f_el'), er = num('f_er'), fa = num('f_fa') || 0;
+  var fu = $('f_fuel');
+  if (fu) {
+    if (sl != null && sr != null && el != null && er != null) {
+      var burned = sl + sr + fa - el - er, hrs = (hs != null && he != null && he > hs) ? he - hs : (ts != null && te != null && te > ts ? te - ts : null);
+      fu.textContent = 'Burned ' + burned.toFixed(1) + ' gal' + (hrs ? ' · ' + (burned / hrs).toFixed(1) + ' GPH' : '');
+    } else fu.textContent = '';
+  }
+}
+function saveFlight() {
+  var d = { date: val('f_date'), pilot: val('f_pilot'), from: val('f_from'), to: val('f_to'), type: val('f_type'),
+    hobbsStart: val('f_hs'), hobbsEnd: val('f_he'), tachStart: val('f_ts'), tachEnd: val('f_te'),
+    oilBefore: val('f_ob'), oilAdded: val('f_oa'), fuelStartL: val('f_sl'), fuelStartR: val('f_sr'),
+    fuelAdded: val('f_fa'), fuelEndL: val('f_el'), fuelEndR: val('f_er'), notes: val('f_notes') };
+  var sq = $('f_sq').checked;
+  $('f_save').disabled = true; $('f_save').textContent = 'Saving…';
+  act('logFlight', d, 'Flight saved').then(function () { if (sq) { S.view = 'squawks'; render(); newSquawk(); } else go('home'); })
+    .catch(function () { var b = $('f_save'); if (b) { b.disabled = false; b.textContent = 'Save flight'; } });
+}
+
+// ----- squawks -----
+function vSquawks(st) {
+  var open = st.squawks.filter(function (q) { return !/^(fixed|closed)$/i.test(q.status); });
+  var closed = st.squawks.filter(function (q) { return /^(fixed|closed)$/i.test(q.status); });
+  var h = '<div class="card"><h2>Open squawks</h2>' + (open.length ? '' : '<div class="muted">None</div>');
+  open.forEach(function (q) { h += sqRow(q); });
+  h += '<button class="btn full" onclick="newSquawk()">+ Add squawk</button></div>';
+  h += '<div class="card"><h2>Fixed</h2>' + (closed.length ? '' : '<div class="muted">None yet</div>');
+  closed.slice(0, 30).forEach(function (q) { h += sqRow(q); });
+  return h + '</div>';
+}
+function newSquawk() {
+  openSheet('<h3>New squawk · ' + esc(S.st.tail) + '</h3><label>What\'s wrong?</label><input id="q_s" placeholder="e.g. Left brake soft">' +
+    '<label>Details</label><textarea id="q_d"></textarea>' +
+    '<div class="check"><input type="checkbox" id="q_g"><span>Grounding — don\'t fly until fixed</span></div>' +
+    '<button class="btn full" onclick="act(\'addSquawk\',{squawk:val(\'q_s\'),details:val(\'q_d\'),grounded:$(\'q_g\').checked},\'Squawk added\')">Save squawk</button>' +
+    '<button class="btn ghost full" onclick="closeSheet()">Cancel</button>');
+}
+function sqSheet(id) {
+  var q = S.st.squawks.filter(function (x) { return x.id === id; })[0]; if (!q) return;
+  var open = !/^(fixed|closed)$/i.test(q.status);
+  var h = '<h3>' + (q.grounded && open ? '⛔ ' : '') + esc(q.squawk) + '</h3><div class="hint">' + niceDate(q.date) + ' · ' + esc(q.by) + ' · ' + esc(q.status) + '</div>';
+  if (q.details) h += '<p>' + esc(q.details) + '</p>';
+  if (open) {
+    h += '<label>Fixed date</label><input type="date" id="x_d" value="' + S.st.today + '"><div class="grid2"><div><label>Fixed by</label><input id="x_b" placeholder="A&P name"></div><div><label>Cost</label><input id="x_c" inputmode="decimal"></div></div>' +
+      '<label>Tach</label><input id="x_t" inputmode="decimal" value="' + (S.st.tachNow != null ? S.st.tachNow : '') + '"><label>What was done</label><textarea id="x_n"></textarea>' +
+      '<button class="btn full" onclick="act(\'fixSquawk\',{id:\'' + q.id + '\',date:val(\'x_d\'),by:val(\'x_b\'),cost:val(\'x_c\'),tach:val(\'x_t\'),notes:val(\'x_n\')},\'Marked fixed\')">Mark fixed</button>' +
+      '<button class="btn ghost full" onclick="act(\'fixSquawk\',{id:\'' + q.id + '\',status:\'Deferred\',date:\'\',notes:val(\'x_n\')},\'Deferred\')">Defer (not grounding)</button>';
+  } else h += '<p class="hint">Fixed ' + niceDate(q.fixedDate) + (q.fixedBy ? ' by ' + esc(q.fixedBy) : '') + '</p>' + (q.fixNotes ? '<p>' + esc(q.fixNotes) + '</p>' : '');
+  h += '<button class="btn ghost full" onclick="closeSheet()">Close</button>';
+  openSheet(h);
+}
+
+// ----- maintenance -----
+function vMaint(st) {
+  var h = '<div class="card"><h2>Due items · tach ' + fmt(st.tachNow) + '</h2>';
+  st.items.forEach(function (it) { h += itemRow(it); });
+  h += '<button class="btn ghost small" style="margin-top:10px" onclick="itemEdit()">+ Add item</button></div>';
+  h += '<div class="card"><h2>Maintenance log</h2><button class="btn ghost small" onclick="logOther()">+ Log other work</button>';
+  st.mlog.slice(0, 40).forEach(function (m) {
+    h += '<div class="row"><div class="main"><b>' + esc(m.item) + '</b><div class="sub">' + niceDate(m.date) + (m.tach != null ? ' · tach ' + fmt(m.tach) : '') + (m.by ? ' · ' + esc(m.by) : '') + (m.cost != null ? ' · ' + money(m.cost) : '') + '</div>' + (m.work ? '<div class="sub">' + esc(m.work) + '</div>' : '') + '</div></div>';
+  });
+  return h + '</div>';
+}
+function itemSheet(id) {
+  var it = S.st.items.filter(function (x) { return x.id === id; })[0]; if (!it) return;
+  var every = [];
+  if (it.everyMonths) every.push('every ' + it.everyMonths + ' months' + (it.calMonths ? ' (calendar)' : ''));
+  if (it.everyHours) every.push('every ' + it.everyHours + ' tach hrs');
+  var h = '<h3>' + esc(it.item) + '</h3><div class="hint">' + esc(it.category) + (every.length ? ' · ' + every.join(', ') : '') + '</div>' +
+    '<p><span class="pill ' + it.status + '">' + pillText(it.status) + '</span> ' + esc(dueText(it)) + '</p>' +
+    '<div class="hint">Last done: ' + (it.lastDate ? niceDate(it.lastDate) : '—') + (it.lastTach != null ? ' at tach ' + fmt(it.lastTach) : '') + '</div>' +
+    (it.notes ? '<p>' + esc(it.notes) + '</p>' : '') +
+    '<h3 style="margin-top:16px">Log it done</h3><div class="grid2"><div><label>Date</label><input type="date" id="m_d" value="' + S.st.today + '"></div><div><label>Tach</label><input id="m_t" inputmode="decimal" value="' + (S.st.tachNow != null ? S.st.tachNow : '') + '"></div></div>' +
+    '<div class="grid2"><div><label>By</label><input id="m_b" placeholder="A&P / shop"></div><div><label>Cost</label><input id="m_c" inputmode="decimal"></div></div>' +
+    '<label>Notes</label><textarea id="m_w"></textarea>' +
+    '<label>Next due date (leave blank to calculate)</label><input type="date" id="m_nd">' +
+    '<label>Next due tach (leave blank to calculate)</label><input id="m_nt" inputmode="decimal">' +
+    '<button class="btn full" onclick="act(\'logMaint\',{itemId:\'' + it.id + '\',date:val(\'m_d\'),tach:val(\'m_t\'),by:val(\'m_b\'),cost:val(\'m_c\'),work:val(\'m_w\'),nextDate:val(\'m_nd\'),nextTach:val(\'m_nt\')},\'Logged\')">Log done</button>' +
+    '<button class="btn ghost full" onclick="itemEdit(\'' + it.id + '\')">Edit item / enter dates</button>' +
+    '<button class="btn ghost full" onclick="closeSheet()">Close</button>';
+  openSheet(h);
+}
+function itemEdit(id) {
+  var it = id ? S.st.items.filter(function (x) { return x.id === id; })[0] : { item: '', category: 'Inspection', calMonths: true };
+  var cats = ['Inspection', 'AD', 'Oil', 'Avionics', 'Paperwork', 'Insurance', 'Other'];
+  var v = function (x) { return x == null ? '' : esc(x); };
+  openSheet('<h3>' + (id ? 'Edit ' + esc(it.item) : 'New item') + '</h3>' +
+    '<label>Item</label><input id="e_i" value="' + v(it.item) + '">' +
+    '<label>Category</label><select id="e_c">' + cats.map(function (c) { return '<option' + (c === it.category ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>' +
+    '<div class="grid2"><div><label>Every (months)</label><input id="e_m" inputmode="numeric" value="' + v(it.everyMonths) + '"></div><div><label>Every (tach hrs)</label><input id="e_h" inputmode="decimal" value="' + v(it.everyHours) + '"></div></div>' +
+    '<div class="check"><input type="checkbox" id="e_cal"' + (it.calMonths ? ' checked' : '') + '><span>Calendar months (due end of the month, like an annual)</span></div>' +
+    '<div class="grid2"><div><label>Last done date</label><input type="date" id="e_ld" value="' + v(it.lastDate) + '"></div><div><label>Last done tach</label><input id="e_lt" inputmode="decimal" value="' + v(it.lastTach) + '"></div></div>' +
+    '<div class="grid2"><div><label>Next due date</label><input type="date" id="e_nd" value="' + (id && it.lastDate && it.everyMonths ? '' : v(it.dueDate)) + '"></div><div><label>Next due tach</label><input id="e_nt" inputmode="decimal" value="' + (id && it.lastTach != null && it.everyHours ? '' : v(it.dueTach)) + '"></div></div>' +
+    '<div class="hint">Fill in "last done" and the app works out the next due. Use "next due" for one-time items like an AD due at a set tach.</div>' +
+    '<label>Notes</label><textarea id="e_n">' + v(it.notes) + '</textarea>' +
+    (id ? '<div class="check"><input type="checkbox" id="e_off"><span>Remove from the list (no longer needed)</span></div>' : '') +
+    '<button class="btn full" onclick="saveItem(\'' + (id || '') + '\')">Save</button><button class="btn ghost full" onclick="closeSheet()">Cancel</button>');
+}
+function saveItem(id) {
+  act('saveItem', { id: id, item: val('e_i'), category: val('e_c'), everyMonths: val('e_m'), everyHours: val('e_h'), calMonths: $('e_cal').checked,
+    lastDate: val('e_ld'), lastTach: val('e_lt'), dueDate: val('e_nd'), dueTach: val('e_nt'), notes: val('e_n'), active: !($('e_off') && $('e_off').checked) }, 'Item saved');
+}
+function logOther() {
+  openSheet('<h3>Log other work</h3><label>What</label><input id="o_i" placeholder="e.g. Replaced left main tire">' +
+    '<div class="grid2"><div><label>Date</label><input type="date" id="o_d" value="' + S.st.today + '"></div><div><label>Tach</label><input id="o_t" inputmode="decimal" value="' + (S.st.tachNow != null ? S.st.tachNow : '') + '"></div></div>' +
+    '<div class="grid2"><div><label>By</label><input id="o_b"></div><div><label>Cost</label><input id="o_c" inputmode="decimal"></div></div><label>Notes</label><textarea id="o_w"></textarea>' +
+    '<button class="btn full" onclick="act(\'logMaint\',{itemName:val(\'o_i\'),date:val(\'o_d\'),tach:val(\'o_t\'),by:val(\'o_b\'),cost:val(\'o_c\'),work:val(\'o_w\')},\'Logged\')">Save</button><button class="btn ghost full" onclick="closeSheet()">Cancel</button>');
+}
+
+// ----- bills -----
+function vBills(st) {
+  var b = st.bills; if (!b) return '<div class="card">Billing is off for this aircraft.</div>';
+  var h = '<div class="card"><h2>' + b.year + ' totals · owed to ' + esc(b.billedTo) + '</h2><table class="bills"><tr><th>Company</th><th>Hrs</th><th>Total</th><th>Unpaid</th></tr>';
+  b.ytd.forEach(function (y) { h += '<tr><td>' + esc(y.company) + '</td><td>' + fmt(y.hours) + '</td><td>' + money(y.total) + '</td><td>' + money(y.unpaid) + '</td></tr>'; });
+  h += '</table><div class="hint">' + money(b.rate) + '/hr (' + esc(st.billOn) + ') + ' + money(b.fixed) + ' per company per month</div></div>';
+  var months = []; b.rows.forEach(function (r) { if (months.indexOf(r.month) < 0) months.push(r.month); });
+  months.forEach(function (m) {
+    h += '<div class="card"><h2>' + monthName(m) + '</h2>';
+    b.rows.filter(function (r) { return r.month === m; }).forEach(function (r) {
+      h += '<div class="row"><div class="main"><b>' + esc(r.company) + ' · ' + money(r.total) + '</b><div class="sub">' + fmt(r.hours) + ' hrs (' + r.flights + ' flight' + (r.flights === 1 ? '' : 's') + ') = ' + money(r.hourly) + ' + ' + money(r.monthly) + ' monthly</div></div>' +
+        (r.paid ? '<button class="btn small ghost" onclick="paid(\'' + m + '\',\'' + esc(r.company) + '\',false)">Paid ' + niceDate(r.paidDate) + '</button>'
+                : '<button class="btn small" onclick="paid(\'' + m + '\',\'' + esc(r.company) + '\',true)">Mark paid</button>') + '</div>';
+    });
+    h += '</div>';
+  });
+  return h;
+}
+function paid(m, c, p) {
+  if (!p && !confirm('Mark ' + c + ' ' + monthName(m) + ' as NOT paid?')) return;
+  act('markPaid', { month: m, company: c, paid: p }, p ? 'Marked paid' : 'Marked unpaid');
+}
+
+// ----- history -----
+function vHistory(st) {
+  var h = '<div class="card"><h2>Flights</h2>' + (st.flights.length ? '' : '<div class="muted">No flights yet</div>');
+  st.flights.slice(0, 100).forEach(function (f) {
+    var hrs = st.trackHobbs ? fmt(f.hobbs) + ' Hobbs' : fmt(f.tach, 2) + ' tach';
+    h += '<div class="row" onclick="flightSheet(\'' + f.id + '\')"><div class="main"><b>' + niceDate(f.date) + ' · ' + esc(f.pilot) + ' · ' + hrs + '</b><div class="sub">' + esc(f.from) + (f.to ? '→' + esc(f.to) : '') + ' ' + esc(f.type) + (f.gph ? ' · ' + fmt(f.gph) + ' GPH' : '') + '</div></div></div>';
+  });
+  h += '</div>';
+  if (st.sheetUrl) h += '<div class="hint" style="text-align:center"><a href="' + esc(st.sheetUrl) + '" target="_blank">Open the spreadsheet</a></div>';
+  return h;
+}
+function flightSheet(id) {
+  var f = S.st.flights.filter(function (x) { return x.id === id; })[0]; if (!f) return;
+  var line = function (k, v) { return v == null || v === '' ? '' : '<div class="row"><span class="muted">' + k + '</span><b>' + esc(v) + '</b></div>'; };
+  openSheet('<h3>' + niceDate(f.date) + ' · ' + esc(f.pilot) + '</h3>' +
+    line('Company', f.company) + line('Route', f.from + (f.to ? ' → ' + f.to : '')) + line('Type', f.type) +
+    line('Hobbs', f.hobbsStart != null ? fmt(f.hobbsStart) + ' → ' + fmt(f.hobbsEnd) + ' (' + fmt(f.hobbs) + ')' : '') +
+    line('Tach', f.tachStart != null ? fmt(f.tachStart) + ' → ' + fmt(f.tachEnd) + ' (' + fmt(f.tach, 2) + ')' : '') +
+    line('Oil', f.oilBefore != null || f.oilAdded != null ? fmt(f.oilBefore) + ' qt, added ' + fmt(f.oilAdded) : '') +
+    line('Fuel L/R start', f.fuelStartL != null ? f.fuelStartL + ' / ' + f.fuelStartR : '') + line('Fuel added', f.fuelAdded) +
+    line('Fuel L/R end', f.fuelEndL != null ? f.fuelEndL + ' / ' + f.fuelEndR : '') + line('Burned', f.fuelBurned != null ? f.fuelBurned + ' gal' : '') + line('GPH', f.gph) +
+    (f.notes ? '<p>' + esc(f.notes) + '</p>' : '') + '<div class="hint">Entered by ' + esc(f.enteredBy) + ' ' + esc(f.enteredAt) + '</div>' +
+    '<button class="btn danger full" onclick="if(confirm(\'Delete this flight?\')) act(\'deleteFlight\',{id:\'' + f.id + '\'},\'Flight deleted\')">Delete flight</button>' +
+    '<button class="btn ghost full" onclick="closeSheet()">Close</button>');
+}
+
+init();
+</script>
+</body>
+</html>
