@@ -26,7 +26,7 @@
       '<div class="row"><div class="grow"><div class="title">' + (got ? '\u2705 ' : U.ic + ' ') + esc(x.item) + (x.qty ? ' <span class="sub">\u00b7 ' + esc(x.qty) + '</span>' : '') + '</div>' +
       '<div class="sub">' + esc([x.forWhat ? 'for ' + x.forWhat : '', x.by + ' ' + A.shortD(x.date)].filter(Boolean).join(' \u00b7 ')) + '</div>' +
       (x.best || x.vendor ? '<div class="sub" style="color:var(--green)">Best: ' + esc([x.best, x.vendor].filter(Boolean).join(' at ')) + '</div>' :
-        (x.priceCheck ? '<div class="sub">\ud83d\udcb2 ' + esc(String(x.priceCheck).split('\n')[0].slice(0, 90)) + '</div>' : '')) +
+        (x.priceCheck ? '<div class="sub">\ud83d\udcb2 ' + esc(fixNl(x.priceCheck).split('\n').filter(function (l) { return /^Best:/.test(l); }).concat(fixNl(x.priceCheck).split('\n'))[0].slice(0, 90)) + '</div>' : '')) +
       '</div><span class="pill' + (x.status === 'Ordered' ? ' prog' : got ? ' done' : '') + '"' + (!got && x.status === 'Needed' ? ' style="color:' + U.color + '"' : '') + '>' +
       esc(got ? 'Got it' : x.status === 'Ordered' ? 'Ordered' : U.label) + '</span></div></div>';
   }
@@ -111,8 +111,9 @@
       A.closeSheet(); render(true); toast(f.status ? f.status : 'Saved');
     });
   }
+  function fixNl(t) { return String(t || '').replace(/\\n/g, '\n'); }
   function linkify(t) {
-    return esc(t).replace(/(https?:\/\/[^\s<]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 45 ? u.slice(0, 42) + '\u2026' : u) + '</a>'; });
+    return esc(fixNl(t)).replace(/(https?:\/\/[^\s<]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 45 ? u.slice(0, 42) + '\u2026' : u) + '</a>'; });
   }
 
   A.renderSupplies = render;
