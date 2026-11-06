@@ -303,7 +303,7 @@
       '<button class="btn" data-act="status">Status\u2026</button></div>';
     sheet(html, function (act) {
       if (act === 'start') return setStatus(t, 'In Progress');
-      if (act === 'done') return setStatus(t, 'Done');
+      if (act === 'done') { if (window.E10K.onDone && window.E10K.onDone(t)) return; return setStatus(t, 'Done'); }
       if (act === 'reopen') return setStatus(t, 'In Progress');
       if (act === 'edit') return taskForm(t);
       if (act === 'note') return noteForm(t);
@@ -312,6 +312,7 @@
   }
 
   function setStatus(t, s) {
+    if (s === 'Done' && t.status !== 'Done' && window.E10K.onDone && window.E10K.onDone(t)) return;
     t.status = s; t.completed = s === 'Done' ? todayStr() : '';
     enqueue('task.update', {id: t.id, fields: {status: s}});
     save(); closeSheet(); render(); toast(s === 'Done' ? 'Done \u2713' : s);
@@ -553,7 +554,7 @@
   window.E10K = {
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me,
-    addTab: function (t) { EXTRA_TABS.push(t); }
+    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
