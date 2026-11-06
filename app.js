@@ -434,13 +434,30 @@
     list.forEach(function (h) {
       if (h.date !== last) { html += '<h3>' + esc(h.date) + '</h3>'; last = h.date; }
       html += '<div class="card"><div class="row"><div class="grow"><div class="title">' + esc(h.job) + '</div>' +
-        '<div class="sub">' + esc((me().owner ? h.person + ' \u00b7 ' : '') + h.start + ' \u2013 ' + h.end) +
-        (h.machine ? ' \u00b7 ' + esc(h.machine) + (h.meterEnd ? ' (' + esc(h.meterStart) + '\u2192' + esc(h.meterEnd) + ')' : '') : '') + '</div>' +
+        '<div class="sub">' + esc((me().owner ? h.person + ' \u00b7 ' : '') + h.start + ' \u2013 ' + h.end) + (h.total ? ' (' + esc(h.total) + ' hrs)' : '') + '</div>' +
+        (h.machines || (h.machine ? [{machine: h.machine, meterStart: h.meterStart, meterEnd: h.meterEnd}] : [])).map(function (x) {
+          var hrs = x.hours || (x.meterEnd && x.meterStart ? Math.round((x.meterEnd - x.meterStart) * 10) / 10 : '');
+          return '<div class="sub">\u2699 ' + esc(x.machine) + (x.meterStart ? ' \u00b7 ' + esc(x.meterStart) + (x.meterEnd ? '\u2192' + esc(x.meterEnd) : '') : '') +
+            (hrs !== '' ? ' \u00b7 ' + esc(hrs) + ' hrs' : '') + '</div>';
+        }).join('') +
         (h.work ? '<div class="sub">' + esc(h.work) + '</div>' : '') + '</div>' + (h.pending ? '<span class="pill wait">sending</span>' : '') + '</div></div>';
     });
     $('#view').innerHTML = html;
     if (!noFetch && navigator.onLine && !S.queue.length) api('time.list').then(function (r) {
       if (r.ok) { S.hours = r.entries; save(); if (S.tab === 'hours') renderHours(true); } }).catch(function () {});
+  }
+
+  function machLabel(x) { var L = FLAGS[x.status]; return (L ? L.ic + ' ' : '') + x.name + (L ? ' (' + L.short + ')' : ''); }
+  function machineLine(i) {
+    return '<div class="card mline" data-i="' + i + '" style="padding:10px 12px">' +
+      '<div class="row"><select class="h-mach grow">' + '<option value="">Pick machine</option>' +
+      S.data.machines.map(function (x) { return '<option value="' + esc(x.name) + '">' + esc(machLabel(x)) + '</option>'; }).join('') + '</select>' +
+      '<button class="chip" data-mdel="1" style="margin-left:8px">\u2715</button></div>' +
+      '<div class="sub h-warn" style="display:none;font-weight:600;margin-top:6px"></div>' +
+      '<div class="two h-met" style="display:none"><div><label>Meter start</label><input inputmode="decimal" class="h-ms"></div>' +
+      '<div><label>Meter end</label><input inputmode="decimal" class="h-me" placeholder="at end"></div></div>' +
+      '<div class="h-hrsbox" style="display:none"><label>Hours on it</label><input inputmode="decimal" class="h-hrs" placeholder="e.g. 1.5"></div>' +
+      '</div>';
   }
 
   function hoursForm() {
@@ -451,46 +468,60 @@
       '<label>Job</label><select id="h-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
       '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="07:00"></div>' +
       '<div><label>End</label><input type="time" id="h-end"></div></div>' +
-      '<label>Machine</label><select id="h-machine"><option value="">None</option>' +
-      S.data.machines.map(function (x) { var L = FLAGS[x.status]; return '<option value="' + esc(x.name) + '">' + (L ? L.ic + ' ' : '') + esc(x.name) + (L ? ' (' + L.short + ')' : '') + '</option>'; }).join('') + '</select>' +
-      '<div id="h-mwarn" class="sub" style="display:none;color:var(--red);font-weight:600;margin-top:6px"></div>' +
-      '<div id="meters" class="two" style="display:none"><div><label>Meter start</label><input inputmode="decimal" id="h-ms"></div>' +
-      '<div><label>Meter end</label><input inputmode="decimal" id="h-me"></div></div>' +
+      '<label>Machines used <span class="sub">(skip if none)</span></label><div id="h-mlist"></div>' +
+      '<button class="btn" id="h-madd" style="width:100%">+ Add a machine</button>' +
       '<label>What you did</label><textarea id="h-work" placeholder="Tap the mic on your keyboard to talk"></textarea>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
+    var n = 0;
+    function addLine() {
+      $('#h-mlist').insertAdjacentHTML('beforeend', machineLine(n++));
+      $('#h-madd').textContent = '+ Add another machine';
+    }
+    function wireLine(el) {
+      var mc = mach(el.querySelector('.h-mach').value);
+      el.querySelector('.h-met').style.display = mc && mc.meter ? 'flex' : 'none';
+      el.querySelector('.h-hrsbox').style.display = mc && !mc.meter ? 'block' : 'none';
+      el.querySelector('.h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
+      var w = el.querySelector('.h-warn'), L = mc && FLAGS[mc.status];
+      if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
+      else w.style.display = 'none';
+    }
     sheet(html, function (act) {
       if (act !== 'save') return closeSheet();
       var f = {date: isoToUs($('#h-date').value), job: $('#h-job').value, start: to12($('#h-start').value), end: to12($('#h-end').value),
-        machine: $('#h-machine').value, meterStart: $('#h-ms').value, meterEnd: $('#h-me').value, work: $('#h-work').value.trim()};
+        work: $('#h-work').value.trim(), machines: []};
       if (m.owner) f.person = $('#h-person').value;
       if (!f.job) return toast('Pick the job');
       if (!f.start || !f.end) return toast('Fill in start and end time');
-      if (!f.work) return toast('Say what you did');
-      var mc = mach(f.machine);
-      if (mc && mc.meter) {
-        if (!f.meterStart || isNaN(+f.meterStart)) { $('#h-ms').focus(); return toast('Enter the hour meter at start'); }
-        if (mc.hours !== null && mc.hours !== undefined && +f.meterStart < mc.hours &&
-          !confirm('Meter start (' + f.meterStart + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
-        if (mc.hours !== null && mc.hours !== undefined && +f.meterStart > mc.hours + 300 &&
-          !confirm('Meter start is ' + Math.round(+f.meterStart - mc.hours) + ' hrs more than the last reading (' + mc.hours + '). Is that right?')) return;
+      var lines = Array.prototype.slice.call(document.querySelectorAll('#h-mlist .mline'));
+      for (var i = 0; i < lines.length; i++) {
+        var el = lines[i], name = el.querySelector('.h-mach').value; if (!name) continue;
+        var mc = mach(name), x = {machine: name, meterStart: el.querySelector('.h-ms').value.trim(), meterEnd: el.querySelector('.h-me').value.trim(),
+          hours: el.querySelector('.h-hrs').value.trim()};
+        if (mc && mc.meter) {
+          if (!x.meterStart || isNaN(+x.meterStart)) { el.querySelector('.h-ms').focus(); return toast('Enter the hour meter at start for ' + name); }
+          if (x.meterEnd && +x.meterEnd < +x.meterStart) { el.querySelector('.h-me').focus(); return toast(name + ': meter end is lower than start'); }
+          if (mc.hours !== null && mc.hours !== undefined && +x.meterStart < mc.hours &&
+            !confirm(name + ': meter start (' + x.meterStart + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
+          if (mc.hours !== null && mc.hours !== undefined && +x.meterStart > mc.hours + 300 &&
+            !confirm(name + ': meter start is ' + Math.round(+x.meterStart - mc.hours) + ' hrs more than the last reading (' + mc.hours + '). Is that right?')) return;
+        }
+        f.machines.push(x);
       }
-      if (f.machine && f.meterStart && f.meterEnd && +f.meterEnd < +f.meterStart) return toast('Meter end is lower than start');
-      if (mc && mc.meter) mc.hours = +(f.meterEnd || f.meterStart);
+      if (!f.work) return toast('Say what you did');
+      f.machines.forEach(function (x) { var mc = mach(x.machine); if (mc && mc.meter) mc.hours = +(x.meterEnd || x.meterStart); });
       f.clientId = uid();
       ls.set('lastJob', f.job);
       S.hours.unshift(Object.assign({pending: true, person: f.person || m.name}, f));
       enqueue('time.create', {fields: f});
       save(); closeSheet(); render(); toast('Hours logged');
     });
-    var ms = $('#h-machine'); ms.onchange = function () {
-      var mc = mach(ms.value);
-      $('#meters').style.display = ms.value ? 'flex' : 'none';
-      $('#h-ms').placeholder = mc && mc.hours !== null && mc.hours !== undefined ? 'last: ' + mc.hours : 'required';
-      $('#h-me').placeholder = 'at end';
-      var w = $('#h-mwarn');
-      var L = mc && FLAGS[mc.status];
-      if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
-      else w.style.display = 'none';
+    $('#h-madd').onclick = function (e) { e.stopPropagation(); addLine(); };
+    $('#h-mlist').onchange = function (e) { var el = e.target.closest('.mline'); if (el && e.target.classList.contains('h-mach')) wireLine(el); };
+    $('#h-mlist').onclick = function (e) {
+      var d = e.target.closest('[data-mdel]'); if (!d) return; e.stopPropagation();
+      d.closest('.mline').remove();
+      if (!document.querySelector('#h-mlist .mline')) $('#h-madd').textContent = '+ Add a machine';
     };
   }
 
