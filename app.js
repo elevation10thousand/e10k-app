@@ -540,7 +540,16 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+/.test(to)) return toast('Enter the client\'s email');
       if (act === 'mailto') {
         location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(sub) + '&body=' + encodeURIComponent(b);
-        return;
+        return setTimeout(function () {
+          sheet('<h2>Did you send it?</h2><div class="kv">To ' + esc(to) + '<br>' + esc(sub) + '</div>' +
+            '<div class="sub">Tap Yes once it\'s sent from your email and the walkthrough gets marked as sent.</div>' +
+            '<div class="btns"><button class="btn" data-act="no">Not sent</button><button class="btn ok" data-act="yes">Yes, log it</button></div>', function (a2) {
+            if (a2 !== 'yes') return walkDetail(w);
+            enqueue('walk.email', {fields: {id: w.id, to: to, subject: sub, body: b, logOnly: true}});
+            w.sent = todayStr(); w.sentTo = to; w.draft = b; if (!w.clientEmail) w.clientEmail = to;
+            save(); closeSheet(); render(); toast('Logged as sent');
+          });
+        }, 600);
       }
       if (act !== 'send') return;
       if (!navigator.onLine) return toast('Needs a signal to send');

@@ -156,7 +156,7 @@
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+/.test(to)) return A.toast('Enter their email');
       if (act === 'mailto') {
         location.href = 'mailto:' + encodeURIComponent(to).replace(/%2C/g, ',') + '?subject=' + encodeURIComponent(sub) + '&body=' + encodeURIComponent(b);
-        return;
+        return setTimeout(function () { askLogged(l, to, sub, b, after); }, 600);
       }
       if (act !== 'send') return;
       if (!navigator.onLine) return A.toast('Needs a signal to send');
@@ -167,6 +167,18 @@
         A.toast('Sent to ' + to);
         if (after) after({subject: sub}); else A.closeSheet();
       }).catch(function () { btn.disabled = false; btn.textContent = 'Send'; A.toast('No signal \u2013 try again'); });
+    });
+  }
+
+  function askLogged(l, to, sub, b, after) {
+    A.sheet('<h2>Did you send it?</h2><div class="kv">To ' + esc(to) + '<br>' + esc(sub) + '</div>' +
+      '<div class="sub">Tap Yes once it\'s sent from your email and it gets logged on ' + esc(firstName(l)) + '\'s lead.</div>' +
+      '<div class="btns"><button class="btn" data-act="no">Not sent</button><button class="btn ok" data-act="yes">Yes, log it</button></div>', function (act) {
+      if (act !== 'yes') return after ? after(null) : A.closeSheet();
+      A.enqueue('lead.email', {fields: {lead: l.id, to: to, subject: sub, body: b, logOnly: true}});
+      l.last = A.todayStr(); if (!l.email) l.email = to; A.save();
+      A.toast('Logged');
+      if (after) after({subject: sub}); else A.closeSheet();
     });
   }
 
