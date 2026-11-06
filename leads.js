@@ -12,7 +12,8 @@
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d; }
   function us(d) { return ('0' + (d.getMonth() + 1)).slice(-2) + '/' + ('0' + d.getDate()).slice(-2) + '/' + d.getFullYear(); }
   function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  function words(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2; }); }
+  var STOP = {the: 1, and: 1, for: 1, with: 1, team: 1, buyer: 1, seller: 1, lead: 1, web: 1, sale: 1, land: 1, ranch: 1, about: 1, from: 1};
+  function words(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2 && !STOP[w]; }); }
 
   /** Best-guess lead for a task: its saved Lead ID, else name matching. */
   function guessLead(t, leads) {
