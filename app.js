@@ -396,7 +396,7 @@
     var warn = secs.reduce(function (a, x) { return a + (x.items || []).filter(function (i) { return i.tone === 'warn'; }).length; }, 0);
     return '<div class="card tap brief" data-brief="open"><div class="row"><div class="grow"><div class="title">' + (b.mode === 'evening' ? '\ud83c\udf05 ' : '\u2600\ufe0f ') +
       esc(d.title || (b.mode === 'evening' ? 'Evening briefing' : 'Morning briefing')) + '</div>' +
-      '<div class="sub">' + esc(secs.slice(0, 3).map(function (x) { return x.heading + ' (' + (x.items || []).length + ')'; }).join(' \u00b7 ') || (n + ' items')) + '</div></div>' +
+      '<div class="sub">' + esc(secs.slice(0, 3).map(function (x) { return /\)\s*$/.test(x.heading || '') ? x.heading : x.heading + ' (' + (x.items || []).length + ')'; }).join(' \u00b7 ') || (n + ' items')) + '</div></div>' +
       (warn ? '<span class="pill late">' + warn + ' heads-up</span>' : '<span class="pill">Read</span>') + '</div></div>';
   }
   function briefingHtml(b) {
