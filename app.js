@@ -612,7 +612,7 @@
           var g = groups[j], rows = g.filter(function (t) { return !hotIds[t.id]; }).sort(bySc);
           var lateN = g.filter(function (t) { var n = tDays(t); return n !== null && n < 0; }).length;
           var cnt = g.length + ' open' + (lateN ? ' \u00b7 <b class="tl-late">' + lateN + ' late</b>' : '') + (g.length > rows.length ? ' \u00b7 ' + (g.length - rows.length) + ' up top' : '');
-          html += tBox('j-' + e + '-' + j, esc(j), cnt, rows.map(function (t) { return tRow(t, false); }), {sub: clients[j] && clients[j] !== j ? clients[j] : ''});
+          html += tBox('j-' + e + '-' + j, esc(j), cnt, rows.map(function (t) { return tRow(t, false); }), {sub: clients[j] && clients[j] !== j && /[A-Za-z]/.test(clients[j]) ? clients[j] : ''});
         });
       });
     }
