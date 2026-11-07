@@ -100,8 +100,11 @@
     var html = '<button class="chip" data-eq="back">\u2190 All equipment</button>' +
       '<h2>' + (FL(m.status) ? FL(m.status).ic + ' ' : '') + esc(m.model) + '</h2>' +
       (FL(m.status) ? '<div class="card' + flagCls(m) + '"><div class="title">' + FL(m.status).ic + ' ' + esc(FL(m.status).label) + '</div>' +
-        String(m.statusNote || '').split(' | ').map(function (n) { return '<div class="sub" style="color:#ddd">' + esc(n) + '</div>'; }).join('') +
-        '<div class="btns"><button class="btn" data-eq="level">Change level</button><button class="btn ok" data-eq="service">\u2705 Back in service</button></div></div>' : '') +
+        ((m.issues || []).length ? m.issues.slice().sort(function (a, b) { return RANK[b.level] - RANK[a.level]; }).map(function (i) {
+          return '<div class="sub" style="color:#ddd;margin:3px 0">' + (FL(i.level) ? FL(i.level).ic + ' ' : '') + esc(i.text) + (i.by ? ' <span style="opacity:.7">\u00b7 ' + esc(i.by) + ' ' + esc(i.date) + '</span>' : '') + '</div>'; }).join('')
+          : String(m.statusNote || '').split(' | ').map(function (n) { return '<div class="sub" style="color:#ddd">' + esc(n) + '</div>'; }).join('')) +
+        '<div class="btns">' + ((m.issues || []).length ? '<button class="btn ok" data-eq="issues">\ud83d\udd27 Fix / update problems</button>'
+          : '<button class="btn" data-eq="level">Change level</button><button class="btn ok" data-eq="service">\u2705 Back in service</button>') + '</div></div>' : '') +
       '<div class="kv">Hours <b>' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) : 'not entered') + '</b>' + (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') + '</div>' +
       (m.serial ? '<div class="kv">S/N <b>' + esc(m.serial) + '</b></div>' : '') +
       (m.engine ? '<div class="kv">Engine <b>' + esc(m.engine) + '</b>' + (m.engineSn ? ' \u00b7 S/N ' + esc(m.engineSn) : '') + '</div>' : '') +
@@ -279,6 +282,60 @@
     var get = wireLevels('lv-lvl');
   }
 
+  function issuesForm(m) {
+    var issues = (m.issues || []).slice().sort(function (a, b) { return RANK[b.level] - RANK[a.level]; });
+    var pick = {}; issues.forEach(function (i) { pick[i.id] = i.level; });
+    var OPTS = [['fixed', '\u2705', 'Fixed'], ['DOWN', '\u26d4', 'Critical'], ['Problem', '\u26a0\ufe0f', 'Broken, OK to run'], ['Watch', '\u2139\ufe0f', 'Be aware']];
+    var html = '<h2>' + esc(m.model) + ': problems</h2><div class="sub">Mark what\u2019s fixed. Anything left stays on Bob\u2019s list at the level you pick.</div>' +
+      issues.map(function (i) {
+        return '<div class="card" style="padding:10px"><div class="title" style="font-size:15px">' + esc(i.text) + '</div>' +
+          '<div class="sub">' + esc([i.by, i.date].filter(Boolean).join(' ')) + '</div><div class="chips" data-iss="' + esc(i.id) + '" style="flex-wrap:wrap;margin-top:6px">' +
+          OPTS.map(function (o) { return '<button class="chip' + (o[0] === i.level ? ' on' : '') + '" data-opt="' + o[0] + '">' + o[1] + ' ' + o[2] + '</button>'; }).join('') + '</div></div>';
+      }).join('') +
+      '<div id="is-sum" class="card" style="margin-top:8px"></div>' +
+      '<label>What was done? <span class="sub">(needed if anything is fixed)</span></label><textarea id="is-n" placeholder="Tap the mic: Will aired up the back left tire"></textarea>' + hoursField(m, 'is-h') +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save" id="is-save">Save</button></div>';
+    function result() {
+      var lv = 'In Service';
+      issues.forEach(function (i) { var a = pick[i.id]; if (a !== 'fixed' && RANK[a] > RANK[lv]) lv = a; });
+      return lv;
+    }
+    function summary() {
+      var lv = result(), left = issues.filter(function (i) { return pick[i.id] !== 'fixed'; }).length;
+      $('#is-sum').className = 'card' + (FL(lv) ? ' ' + FL(lv).cls : '');
+      $('#is-sum').innerHTML = '<b>Machine will be: ' + (lv === 'In Service' ? '\u2705 In service' : FL(lv).ic + ' ' + esc(FL(lv).label)) + '</b>' +
+        (left ? '<div class="sub" style="color:#ddd">' + left + ' problem' + (left > 1 ? 's' : '') + ' stay' + (left > 1 ? '' : 's') + ' open for Bob</div>' : '');
+      $('#is-save').textContent = lv === 'In Service' ? '\u2705 Back in service' : lv === 'DOWN' ? 'Save (still critical)' : '\u2705 OK to run \u2013 save';
+    }
+    A.sheet(html, function (act) {
+      if (act !== 'save') return A.closeSheet();
+      var changes = issues.filter(function (i) { return pick[i.id] !== i.level; }).map(function (i) { return {id: i.id, action: pick[i.id]}; });
+      var note = $('#is-n').value.trim(), hv = $('#is-h').value.trim();
+      if (!changes.length && !hv) return A.closeSheet();
+      if (changes.some(function (c) { return c.action === 'fixed'; }) && !note) { $('#is-n').focus(); return toast('Say what was done'); }
+      A.enqueue('equip.issues', {fields: {machine: m.key, issues: changes, note: note, hours: hv, clientId: A.uid()}});
+      var lv = result();
+      m.issues = issues.filter(function (i) { return pick[i.id] !== 'fixed'; }).map(function (i) { i.level = pick[i.id]; return i; });
+      m.status = lv; m.statusNote = m.issues.map(function (i) { return (i.by ? i.by + ' ' : '') + i.date + ': ' + i.text; }).join(' | ');
+      if (hv) { m.hours = +hv; m.hoursAsOf = A.todayStr(); }
+      var fl = A.S.data.flags || (A.S.data.flags = []);
+      if (lv === 'In Service') A.S.data.flags = fl.filter(function (x) { return x.key !== m.key; });
+      else fl.forEach(function (x) { if (x.key === m.key) { x.status = lv; x.note = m.statusNote; } });
+      var bm = (A.S.data.machines || []).filter(function (x) { return x.name === m.key; })[0]; if (bm) bm.status = lv;
+      A.save(); A.renderFlags();
+      after(lv === 'In Service' ? 'Back in service \u2013 everyone gets a heads-up' : 'Saved \u2013 ' + FL(lv).label.toLowerCase());
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-iss]'), function (box) {
+      box.onclick = function (e) {
+        var b = e.target.closest('[data-opt]'); if (!b) return; e.stopPropagation();
+        pick[box.getAttribute('data-iss')] = b.getAttribute('data-opt');
+        Array.prototype.forEach.call(box.querySelectorAll('.chip'), function (x) { x.classList.toggle('on', x === b); });
+        summary();
+      };
+    });
+    summary();
+  }
+
   function serviceForm(m) {
     var repairs = (EQ.hist[m.key] && EQ.hist[m.key].repairs || []).filter(function (r) { return r.phase === 'Equipment Repair'; });
     A.sheet('<h2>Back in service: ' + esc(m.model) + '</h2>' +
@@ -364,6 +421,7 @@
     if (act === 'check') return checkForm(m);
     if (act === 'problem') return problemForm(m);
     if (act === 'log') return logForm(m);
+    if (act === 'issues') return issuesForm(m);
     if (act === 'service') return serviceForm(m);
     if (act === 'level') return levelForm(m);
   });

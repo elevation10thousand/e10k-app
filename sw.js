@@ -3,8 +3,8 @@
 // Data calls (script.google.com) are never cached here; the app keeps its own copy.
 // Strategy (11/06): files with ?v=N never change -> straight from the cache. The page itself (index.html / ./ and
 // the Planes page) -> the saved copy if the network takes more than 2.5 s, refreshed in the background.
-var CACHE = 'e10k-shell-v31';
-var SHELL = ['./', 'index.html', 'app.css?v=14', 'app.js?v=24', 'equip.js?v=17', 'supplies.js?v=6', 'leads.js?v=14', 'chat.js?v=1', 'weather.js?v=1', 'mlog.js?v=1', 'manifest.webmanifest',
+var CACHE = 'e10k-shell-v32';
+var SHELL = ['./', 'index.html', 'app.css?v=14', 'app.js?v=24', 'equip.js?v=18', 'supplies.js?v=6', 'leads.js?v=14', 'chat.js?v=1', 'weather.js?v=1', 'mlog.js?v=1', 'manifest.webmanifest',
   'logo-word.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png', 'badge-72.png'];
 
 self.addEventListener('install', function (e) {
