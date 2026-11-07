@@ -144,3 +144,25 @@ nav#tabs button { font-size: 10.5px; }
 .eqc .title { font-size: 17px; }
 .eql { font-size: 13px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
 .eql.block { color: var(--red); } .eql.wait { color: var(--orange); } .eql.done { color: var(--dim); }
+
+/* briefing-style task lists */
+.tl-seg { display: flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin: 0 0 8px; padding: 2px; }
+.tl-seg button { flex: 1; background: none; border: 0; color: var(--dim); padding: 7px 0; font: 600 14px var(--sans); border-radius: 8px; }
+.tl-seg button.on { background: #2b2b2b; color: #fff; }
+.tl-box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; overflow: hidden; }
+.tl-box.tl-hot { border-color: #5a2323; background: #160c0c; }
+.tl-box.tl-new { border: 2px solid #fff; }
+.tl-h { display: flex; align-items: baseline; gap: 8px; padding: 11px 14px 7px; }
+.tl-ht { flex: 1; font: 600 16px var(--sans); }
+.tl-hc { font-size: 12px; color: var(--dim); white-space: nowrap; }
+.tl-hs { font-size: 12px; color: var(--dim); padding: 0 14px 7px; margin-top: -5px; }
+.tl-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+.tl-r { display: flex; gap: 11px; padding: 9px 14px; border-top: 1px solid #1f1f1f; cursor: pointer; }
+.tl-r:active { background: var(--card2); }
+.tl-ck { flex: none; width: 16px; height: 16px; border: 2px solid #555; border-radius: 50%; margin-top: 3px; }
+.tl-r.p-High .tl-ck { border-color: var(--red); } .tl-r.p-Medium .tl-ck { border-color: var(--orange); }
+.tl-r.is-done .tl-ck { background: var(--green); border-color: var(--green); } .tl-r.is-done .tl-t { text-decoration: line-through; color: var(--dim); }
+.tl-x { flex: 1; min-width: 0; } .tl-t { font-size: 15px; } .tl-s { font-size: 12px; color: var(--dim); margin-top: 2px; }
+.tl-r .newtag { margin: 0 0 4px; }
+.tl-late { color: var(--red); } .tl-soon { color: var(--orange); } .tl-prog { color: var(--blue); } .tl-done { color: var(--green); }
+.tl-more { font-size: 13px; color: var(--dim); padding: 9px 14px; border-top: 1px solid #1f1f1f; cursor: pointer; }

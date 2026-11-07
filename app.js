@@ -511,6 +511,47 @@
     var d = parseD(t.due); if (!d) return false;
     var n = new Date(); n.setHours(0, 0, 0, 0); return d > n;
   }
+  // ---------- task list: briefing-style. "By job" (Do these first + one card per job) or "By when" ----------
+  var TL_ORDER = ['E10K', 'Real Estate', 'Personal', 'One Cent LLC', 'Two Cent LLC', 'Western Approach LLC', 'Aircraft'];
+  function tDays(t) { var d = parseD(t.due); if (!d) return null; var n = new Date(); n.setHours(0, 0, 0, 0); return Math.round((d - n) / 864e5); }
+  function tScore(t) {
+    var n = tDays(t);
+    var band = n !== null && n < 0 ? 0 : n === 0 ? 1 : n === 1 ? 2 : t.priority === 'High' ? 3 : n !== null && n <= 7 ? 4 : t.status === 'In Progress' ? 5 : 6;
+    return band * 10000 + (n === null ? 5000 : Math.max(-999, Math.min(n, 4000)) + 1000) + (t.priority === 'High' ? 0 : t.priority === 'Low' ? 2 : 1);
+  }
+  function bySc(a, b) { return tScore(a) - tScore(b); }
+  function dueTxt(t) {
+    var n = tDays(t); if (n === null) return '';
+    if (n < 0) return '<span class="tl-late">' + (-n) + ' day' + (n < -1 ? 's' : '') + ' late</span>';
+    if (n === 0) return '<span class="tl-soon">due today</span>';
+    if (n === 1) return '<span class="tl-soon">due tomorrow</span>';
+    var d = parseD(t.due); return 'due ' + d.toLocaleDateString('en-US', {weekday: 'short'}) + ' ' + (d.getMonth() + 1) + '/' + d.getDate();
+  }
+  function isHot(t) { var n = tDays(t); return t.status !== 'Waiting' && t.status !== 'Done' && ((n !== null && n <= 1) || t.priority === 'High'); }
+  function tRow(t, showJob) {
+    var bits = [], nw = isNewFor(t);
+    if (showJob) bits.push(esc(t.job || t.entity));
+    if (t.status === 'Done') bits.push('<span class="tl-done">done</span>');
+    else { var dt = dueTxt(t); if (dt) bits.push(dt); }
+    if (t.status === 'Waiting') bits.push('<span class="tl-prog">waiting</span>');
+    else if (t.status === 'In Progress') bits.push('<span class="tl-prog">in progress</span>');
+    else if (t.status === 'Blocked') bits.push('<span class="tl-late">blocked</span>');
+    if (t.area) bits.push(esc(t.area));
+    if (S.tab === 'all' && t.owner) bits.push(esc(t.owner));
+    return '<div class="tl-r p-' + esc(t.priority || 'Medium') + (t.status === 'Done' ? ' is-done' : '') + (nw ? ' is-new' : '') + '" data-task="' + esc(t.id) + '">' +
+      '<span class="tl-ck"></span><div class="tl-x">' + (nw ? '<span class="newtag">NEW' + (S.data.newFor[t.id] ? ' \u00b7 ' + esc(S.data.newFor[t.id]) : '') + '</span>' : '') +
+      '<div class="tl-t">' + esc(t.task) + '</div><div class="tl-s">' + bits.join(' \u00b7 ') + '</div></div></div>';
+  }
+  /** A briefing-style box. key = remembers if it's opened up. */
+  function tBox(key, title, count, rows, opt) {
+    opt = opt || {};
+    var limit = opt.limit === undefined ? 3 : opt.limit, open = !!(S.tlOpen || {})[key], collapsed = opt.collapsed && !open;
+    var shown = collapsed ? [] : (open ? rows : rows.slice(0, limit)), rest = rows.length - shown.length;
+    return '<div class="tl-box' + (opt.cls ? ' ' + opt.cls : '') + '"><div class="tl-h"' + (opt.collapsed ? ' data-tlopen="' + esc(key) + '"' : '') + '><div class="tl-ht">' + title + '</div>' +
+      '<div class="tl-hc">' + count + (opt.collapsed ? (open ? ' \u25b4' : ' \u203a') : '') + '</div></div>' + (opt.sub ? '<div class="tl-hs">' + esc(opt.sub) + '</div>' : '') +
+      shown.join('') + (!collapsed && rest > 0 ? '<div class="tl-more" data-tlopen="' + esc(key) + '">+' + rest + ' more \u203a</div>' : '') +
+      (!collapsed && open && rows.length > limit && !opt.collapsed ? '<div class="tl-more" data-tlopen="' + esc(key) + '">Show less \u25b4</div>' : '') + '</div>';
+  }
   function renderTasks() {
     var all = S.data.tasks || [], m = me(), qq = S.filter.trim(), later = [];
     var list = all.filter(function (t) {
@@ -521,42 +562,73 @@
       }
       return t.status !== 'Done';
     });
-    var groupKey = m.owner && S.tab === 'mine' ? 'entity' : (m.owner ? 'entity' : 'job');
-    var groups = {};
-    list.forEach(function (t) { var g = t[groupKey] || 'Other'; (groups[g] = groups[g] || []).push(t); });
-    var names = Object.keys(groups).sort(function (a, b) {
-      var ia = ENTITY_ORDER.indexOf(a), ib = ENTITY_ORDER.indexOf(b);
-      if (ia < 0) ia = 99; if (ib < 0) ib = 99; return ia - ib || a.localeCompare(b);
-    });
-    var chips = ['All'].concat(names);
-    if (chips.indexOf(S.chip) < 0) S.chip = 'All';
+    var ents = {}; list.forEach(function (t) { ents[t.entity || 'Other'] = 1; });
+    var names = Object.keys(ents).sort(function (a, b) {
+      var ia = TL_ORDER.indexOf(a), ib = TL_ORDER.indexOf(b); if (ia < 0) ia = 99; if (ib < 0) ib = 99; return ia - ib || a.localeCompare(b); });
+    if (['All'].concat(names).indexOf(S.chip) < 0) S.chip = 'All';
     var q = S.filter.toLowerCase();
-    var html = (S.tab === 'mine' ? briefingCard() + alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
-    if (names.length > 1) html += '<div class="chips">' + chips.map(function (c) {
-      return '<button class="chip ' + (S.chip === c ? 'on' : '') + '" data-chip="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>';
-    var shown = 0;
-    if (S.tab === 'mine' && S.chip === 'All' && !q) {
-      var fresh = sortTasks(list.filter(isNewFor));
-      if (fresh.length) { shown += fresh.length; html += '<h3 class="newh">New for you (' + fresh.length + ')</h3>' + fresh.map(taskCard).join(''); }
-    }
-    names.forEach(function (g) {
-      if (S.chip !== 'All' && S.chip !== g) return;
-      var items = sortTasks(groups[g].filter(function (t) {
-        if (S.tab === 'mine' && S.chip === 'All' && !q && isNewFor(t)) return false;
-        return !q || (t.task + ' ' + t.job + ' ' + t.area + ' ' + t.notes + ' ' + t.owner).toLowerCase().indexOf(q) >= 0; }));
-      if (!items.length) return;
-      shown += items.length;
-      html += '<h3>' + esc(g) + ' (' + items.length + ')</h3>' + items.map(taskCard).join('');
+    list = list.filter(function (t) {
+      if (S.chip !== 'All' && (t.entity || 'Other') !== S.chip) return false;
+      return !q || (t.task + ' ' + t.job + ' ' + t.area + ' ' + t.notes + ' ' + t.owner).toLowerCase().indexOf(q) >= 0;
     });
-    if (!shown) html += '<div class="empty">' + (S.tab === 'mine' ? 'Nothing on your list. Nice.' : 'No open tasks.') + '</div>';
+    var mode = ls.get('taskView', 'job');
+    var html = (S.tab === 'mine' ? briefingCard() + alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
+    html += '<div class="tl-seg"><button class="' + (mode === 'job' ? 'on' : '') + '" data-tlview="job">By job</button><button class="' + (mode === 'when' ? 'on' : '') + '" data-tlview="when">By when</button></div>';
+    if (names.length > 1) html += '<div class="chips">' + ['All'].concat(names).map(function (c) {
+      return '<button class="chip ' + (S.chip === c ? 'on' : '') + '" data-chip="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>';
+    var open = list.filter(function (t) { return t.status !== 'Done'; }), doneToday = list.filter(function (t) { return t.status === 'Done'; });
+    var fresh = S.tab === 'mine' && !q ? open.filter(isNewFor).sort(bySc) : [];
+    var freshIds = {}; fresh.forEach(function (t) { freshIds[t.id] = 1; });
+    var rest = open.filter(function (t) { return !freshIds[t.id]; });
+    var waiting = rest.filter(function (t) { return t.status === 'Waiting'; }).sort(bySc);
+    var active = rest.filter(function (t) { return t.status !== 'Waiting'; });
+    if (fresh.length) html += tBox('new', '<span class="tl-dot" style="background:#fff"></span>New for you', fresh.length, fresh.map(function (t) { return tRow(t, true); }), {limit: 99, cls: 'tl-new'});
+    if (mode === 'when') {
+      var B = [['late', 'Late', 'var(--red)', function (n) { return n !== null && n < 0; }, 'tl-hot'],
+        ['soon', 'Today & tomorrow', 'var(--orange)', function (n) { return n === 0 || n === 1; }],
+        ['week', 'This week', '', function (n) { return n !== null && n > 1 && n <= 7; }],
+        ['imp', 'Important, no date', '', function (n, t) { return n === null && t.priority === 'High'; }],
+        ['later', 'Later', '', function (n) { return n !== null && n > 7; }],
+        ['some', 'Someday', '', function () { return true; }]];
+      var used = {};
+      B.forEach(function (b) {
+        var L = active.filter(function (t) { return !used[t.id] && b[3](tDays(t), t); }).sort(bySc);
+        L.forEach(function (t) { used[t.id] = 1; });
+        if (L.length) html += tBox('w-' + b[0], (b[2] ? '<span class="tl-dot" style="background:' + b[2] + '"></span>' : '') + b[1], L.length, L.map(function (t) { return tRow(t, true); }), {limit: 6, cls: b[4]});
+      });
+    } else {
+      var hot = active.filter(isHot).sort(bySc), hotIds = {};
+      hot.forEach(function (t) { hotIds[t.id] = 1; });
+      if (hot.length) html += tBox('hot', '<span class="tl-dot" style="background:var(--red)"></span>Do these first', hot.length, hot.map(function (t) { return tRow(t, true); }), {limit: 6, cls: 'tl-hot'});
+      var clients = {}; ((S.data && S.data.jobs) || []).forEach(function (j) { clients[j.name] = j.client; });
+      var ents2 = {}; active.forEach(function (t) { if (!hotIds[t.id]) ents2[t.entity || 'Other'] = 1; });
+      Object.keys(ents2).sort(function (a, b) { var ia = TL_ORDER.indexOf(a), ib = TL_ORDER.indexOf(b); if (ia < 0) ia = 99; if (ib < 0) ib = 99; return ia - ib; }).forEach(function (e) {
+        var et = active.filter(function (t) { return (t.entity || 'Other') === e; });
+        var groups = {}; et.forEach(function (t) { var k = t.job || 'General'; (groups[k] = groups[k] || []).push(t); });
+        var keys = Object.keys(groups).filter(function (k) { return groups[k].some(function (t) { return !hotIds[t.id]; }); });
+        if (!keys.length) return;
+        if (m.owner) html += '<h3>' + esc(e) + '</h3>';
+        keys.sort(function (a, b) { return Math.min.apply(null, groups[a].map(tScore)) - Math.min.apply(null, groups[b].map(tScore)) || a.localeCompare(b); }).forEach(function (j) {
+          var g = groups[j], rows = g.filter(function (t) { return !hotIds[t.id]; }).sort(bySc);
+          var lateN = g.filter(function (t) { var n = tDays(t); return n !== null && n < 0; }).length;
+          var cnt = g.length + ' open' + (lateN ? ' \u00b7 <b class="tl-late">' + lateN + ' late</b>' : '') + (g.length > rows.length ? ' \u00b7 ' + (g.length - rows.length) + ' up top' : '');
+          html += tBox('j-' + e + '-' + j, esc(j), cnt, rows.map(function (t) { return tRow(t, false); }), {sub: clients[j] && clients[j] !== j ? clients[j] : ''});
+        });
+      });
+    }
+    if (waiting.length) html += tBox('waiting', '<span class="tl-dot" style="background:var(--blue)"></span>Waiting on someone else', waiting.length, waiting.map(function (t) { return tRow(t, true); }), {limit: 99, collapsed: true});
+    if (doneToday.length) html += tBox('done', '<span class="tl-dot" style="background:var(--green)"></span>Done today', doneToday.length, doneToday.map(function (t) { return tRow(t, true); }), {limit: 99, collapsed: true});
+    if (!open.length && !doneToday.length) html += '<div class="empty">' + (q ? 'Nothing matches.' : S.tab === 'mine' ? 'Nothing on your list. Nice.' : 'No open tasks.') + '</div>';
     if (later.length) {
       later.sort(function (a, b) { return parseD(a.due) - parseD(b.due); });
-      html += '<button class="chip" data-later="1" style="margin:14px 0 6px">\ud83d\udcc5 ' + later.length + ' follow-up' + (later.length > 1 ? 's' : '') + ' scheduled for later ' + (S.showLater ? '\u25b4' : '\u25be') + '</button>' +
-        (S.showLater ? later.map(taskCard).join('') : '');
+      html += tBox('later', '<span class="tl-dot" style="background:#777"></span>Follow-ups scheduled for later', later.length, later.map(function (t) { return tRow(t, true); }), {limit: 99, collapsed: true});
     }
     $('#view').innerHTML = html;
-    var lb = document.querySelector('[data-later]'); if (lb) lb.onclick = function (e) { e.stopPropagation(); S.showLater = !S.showLater; renderTasks(); };
     var qi = $('#q'); qi.oninput = function () { S.filter = qi.value; var pos = qi.selectionStart; renderTasks(); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tlview]'), function (b) {
+      b.onclick = function (e) { e.stopPropagation(); ls.set('taskView', b.getAttribute('data-tlview')); renderTasks(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tlopen]'), function (b) {
+      b.onclick = function (e) { e.stopPropagation(); var k = b.getAttribute('data-tlopen'); S.tlOpen = S.tlOpen || {}; S.tlOpen[k] = !S.tlOpen[k]; renderTasks(); }; });
   }
 
   function assignedBy(t) {
