@@ -376,6 +376,7 @@
     $('#tabs').innerHTML = tabs.map(function (t) {
       var nf = ((S.data && S.data.flags) || []).length;
       var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' :
+        (t.k === 'mine' && urgentCount() ? '<span class="badge" style="background:var(--red)">' + urgentCount() + '</span>' : '') ||
         (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' :
         (t.badge && t.badge() ? '<span class="badge">' + t.badge() + '</span>' :
         (t.k === 'hours' && runningCount() ? '<span class="badge" style="background:var(--green)">' + runningCount() + '</span>' :
@@ -539,7 +540,7 @@
     if (t.area) bits.push(esc(t.area));
     if (S.tab === 'all' && t.owner) bits.push(esc(t.owner));
     return '<div class="tl-r p-' + esc(t.priority || 'Medium') + (t.status === 'Done' ? ' is-done' : '') + (nw ? ' is-new' : '') + '" data-task="' + esc(t.id) + '">' +
-      '<span class="tl-ck"></span><div class="tl-x">' + (nw ? '<span class="newtag">NEW' + (S.data.newFor[t.id] ? ' \u00b7 ' + esc(S.data.newFor[t.id]) : '') + '</span>' : '') +
+      '<span class="tl-ckw" data-ck="' + esc(t.id) + '"><span class="tl-ck"></span></span><div class="tl-x">' + (nw ? '<span class="newtag">NEW' + (S.data.newFor[t.id] ? ' \u00b7 ' + esc(S.data.newFor[t.id]) : '') + '</span>' : '') +
       '<div class="tl-t">' + esc(t.task) + '</div><div class="tl-s">' + bits.join(' \u00b7 ') + '</div></div></div>';
   }
   /** A briefing-style box. key = remembers if it's opened up. */
@@ -552,6 +553,77 @@
       shown.join('') + (!collapsed && rest > 0 ? '<div class="tl-more" data-tlopen="' + esc(key) + '">+' + rest + ' more \u203a</div>' : '') +
       (!collapsed && open && rows.length > limit && !opt.collapsed ? '<div class="tl-more" data-tlopen="' + esc(key) + '">Show less \u25b4</div>' : '') + '</div>';
   }
+  // ---------- tap the circle = done (with Undo) ----------
+  function undoToast(msg, undo) {
+    var el = $('#toast'); el.innerHTML = esc(msg) + ' <button class="tl-undo">Undo</button>'; el.classList.remove('hidden');
+    el.querySelector('.tl-undo').onclick = function (e) { e.stopPropagation(); el.classList.add('hidden'); undo(); };
+    clearTimeout(toast.t); toast.t = setTimeout(function () { el.classList.add('hidden'); }, 5000);
+  }
+  function quickDone(id, rowEl) {
+    var t = findTask(id); if (!t) return;
+    if (t.status === 'Done') {   // tapping a finished one (Done today) reopens it
+      t.status = 'In Progress'; t.completed = ''; enqueue('task.update', {id: t.id, fields: {status: 'In Progress'}}); save(); render(); return toast('Reopened');
+    }
+    if (window.E10K.onDone && window.E10K.onDone(t)) return;   // real estate: asks how it went + next follow-up
+    var was = t.status;
+    if (rowEl) rowEl.classList.add('is-done');
+    setTimeout(function () {
+      t.status = 'Done'; t.completed = todayStr();
+      enqueue('task.update', {id: t.id, fields: {status: 'Done'}}); save(); render();
+      undoToast('Done \u2713', function () { t.status = was; t.completed = ''; enqueue('task.update', {id: t.id, fields: {status: was}}); save(); render(); toast('Put back'); });
+    }, 250);
+  }
+
+  // ---------- swipe left on a task = push the due date ----------
+  function usDate(d) { return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear(); }
+  function canPush(t) { var m = me(); return t && t.status !== 'Done' && (m.owner || isMine(t, m)); }
+  function pushDate(t, d) {
+    var was = t.due || '';
+    t.due = usDate(d); enqueue('task.update', {id: t.id, fields: {due: t.due}}); save(); render();
+    undoToast('Moved to ' + d.toLocaleDateString('en-US', {weekday: 'short'}) + ' ' + (d.getMonth() + 1) + '/' + d.getDate(), function () {
+      t.due = was; enqueue('task.update', {id: t.id, fields: {due: was}}); save(); render(); toast('Put back'); });
+  }
+  function swipeBar(row) {
+    var t = findTask(row.getAttribute('data-task')); if (!t) return;
+    if (!canPush(t)) { row.style.transform = ''; return toast('Only the office can change that date'); }
+    closeSwipes();
+    var bar = document.createElement('div'); bar.className = 'tl-sw';
+    bar.innerHTML = '<span class="sub">Push to</span><button data-p="1">Tomorrow</button><button data-p="mon">Next Mon</button><button data-p="7">+1 week</button>' +
+      '<label class="tl-pick">Pick<input type="date"></label><button data-p="x" aria-label="Close">\u2715</button>';
+    row.insertAdjacentElement('afterend', bar); row.classList.add('sw-open');
+    bar.onclick = function (e) {
+      e.stopPropagation(); var b = e.target.closest('[data-p]'); if (!b) return;
+      var k = b.getAttribute('data-p'); if (k === 'x') return closeSwipes();
+      var base = new Date(); base.setHours(12, 0, 0, 0);
+      if (k === 'mon') base.setDate(base.getDate() + ((8 - base.getDay()) % 7 || 7)); else base.setDate(base.getDate() + +k);
+      pushDate(t, base);
+    };
+    bar.querySelector('input').onchange = function (e) { var v = e.target.value; if (!v) return; var p2 = v.split('-'); pushDate(t, new Date(+p2[0], +p2[1] - 1, +p2[2], 12)); };
+  }
+  function closeSwipes() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tl-sw'), function (x) { x.remove(); });
+    Array.prototype.forEach.call(document.querySelectorAll('.tl-r.sw-open'), function (x) { x.classList.remove('sw-open'); x.style.transform = ''; });
+  }
+  function wireSwipes() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tl-r'), function (row) {
+      var x0 = 0, y0 = 0, dx = 0, on = false, dead = false;
+      row.addEventListener('touchstart', function (e) { var p0 = e.touches[0]; x0 = p0.clientX; y0 = p0.clientY; dx = 0; on = false; dead = false; }, {passive: true});
+      row.addEventListener('touchmove', function (e) {
+        if (dead) return; var p0 = e.touches[0], ddx = p0.clientX - x0, ddy = p0.clientY - y0;
+        if (!on) { if (Math.abs(ddy) > 10 && Math.abs(ddy) > Math.abs(ddx)) { dead = true; return; } if (Math.abs(ddx) > 12) on = true; }
+        if (on) { dx = Math.min(0, ddx); row.style.transform = 'translateX(' + Math.max(dx, -110) + 'px)'; }
+      }, {passive: true});
+      row.addEventListener('touchend', function () {
+        if (!on) return; row.style.transform = '';
+        if (dx < -60) { row.dataset.swiped = '1'; setTimeout(function () { delete row.dataset.swiped; }, 400); swipeBar(row); }
+      });
+    });
+  }
+  function urgentCount() {
+    var m = me(); if (!S.data || !m) return 0;
+    return (S.data.tasks || []).filter(function (t) { if (t.status === 'Done' || t.status === 'Waiting' || !isMine(t, m)) return false; var n = tDays(t); return n !== null && n <= 0; }).length;
+  }
+
   function renderTasks() {
     var all = S.data.tasks || [], m = me(), qq = S.filter.trim(), later = [];
     var list = all.filter(function (t) {
@@ -582,6 +654,17 @@
     var rest = open.filter(function (t) { return !freshIds[t.id]; });
     var waiting = rest.filter(function (t) { return t.status === 'Waiting'; }).sort(bySc);
     var active = rest.filter(function (t) { return t.status !== 'Waiting'; });
+    var todayJob = !m.owner && S.tab === 'mine' && !q && S.data.clock && S.data.clock.job;
+    if (!m.owner && S.tab === 'mine' && !q) {
+      if (todayJob) {
+        var tj = (S.data.tasks || []).filter(function (t) { return t.job === todayJob && t.status !== 'Done' && t.status !== 'Waiting' && !isLater(t); }).sort(bySc);
+        var tjIds = {}; tj.forEach(function (t) { tjIds[t.id] = 1; });
+        rest = rest.filter(function (t) { return !tjIds[t.id]; }); active = active.filter(function (t) { return !tjIds[t.id]; });
+        html += tBox('today', '<span class="tl-dot" style="background:var(--green)"></span>Today at ' + esc(todayJob), tj.length + ' open',
+          tj.length ? tj.map(function (t) { var r = tRow(t, false); return isMine(t, m) ? r : r.replace('<div class="tl-s">', '<div class="tl-s">' + esc(t.owner || 'nobody yet') + ' \u00b7 '); }) : ['<div class="tl-more">Nothing open on this job.</div>'],
+          {limit: 99, cls: 'tl-today'});
+      } else html += '<div class="tl-hint">\u23f1 Clock in on the Hours tab and today\u2019s job list shows up here.</div>';
+    }
     if (fresh.length) html += tBox('new', '<span class="tl-dot" style="background:#fff"></span>New for you', fresh.length, fresh.map(function (t) { return tRow(t, true); }), {limit: 99, cls: 'tl-new'});
     if (mode === 'when') {
       var B = [['late', 'Late', 'var(--red)', function (n) { return n !== null && n < 0; }, 'tl-hot'],
@@ -627,6 +710,9 @@
     var qi = $('#q'); qi.oninput = function () { S.filter = qi.value; var pos = qi.selectionStart; renderTasks(); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
     Array.prototype.forEach.call(document.querySelectorAll('[data-tlview]'), function (b) {
       b.onclick = function (e) { e.stopPropagation(); ls.set('taskView', b.getAttribute('data-tlview')); renderTasks(); }; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ck]'), function (b) {
+      b.onclick = function (e) { e.stopPropagation(); quickDone(b.getAttribute('data-ck'), b.closest('.tl-r')); }; });
+    wireSwipes();
     Array.prototype.forEach.call(document.querySelectorAll('[data-tlopen]'), function (b) {
       b.onclick = function (e) { e.stopPropagation(); var k = b.getAttribute('data-tlopen'); S.tlOpen = S.tlOpen || {}; S.tlOpen[k] = !S.tlOpen[k]; renderTasks(); }; });
   }
@@ -1181,7 +1267,7 @@
     var wj = e.target.closest('[data-wjob]'); if (wj) { ls.set('walkJob', wj.getAttribute('data-wjob')); return renderWalks(); }
     var wk = e.target.closest('[data-walk]'); if (wk) { var w = (S.walks || [])[+wk.getAttribute('data-walk')]; if (w) return walkDetail(w); }
     var bf = e.target.closest('[data-brief]'); if (bf) return openBriefing();
-    var t = e.target.closest('[data-task]'); if (t) return openTask(t.getAttribute('data-task'));
+    var t = e.target.closest('[data-task]'); if (t) { if (t.dataset.swiped || t.classList.contains('sw-open')) return; return openTask(t.getAttribute('data-task')); }
     var a = e.target.closest('#sheet [data-act]'); if (a && sheetHandler) return sheetHandler(a.getAttribute('data-act'));
     if (e.target.classList.contains('sheet-bg')) return closeSheet();
   });
