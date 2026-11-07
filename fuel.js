@@ -13,13 +13,14 @@
   function money0(v) { return '$' + Math.round(v || 0).toLocaleString(); }
   function tankNames() { return (F.tanks || []).map(function (t) { return t.name; }); }
   function machines() { return ((A.S.data && A.S.data.machines) || []).map(function (m) { return m.name; }); }
+  function onFuel() { return A.S.tab === 'equip' && ls.get('eqView', 'machines') === 'fuel' && !(A.curMachine && A.curMachine()); }
 
   function load() {
     return A.api('fuel.list').then(function (r) {
       if (!r.ok) return;
       F.tanks = r.tanks; F.log = r.log; F.months = r.months || null;
       ls.set('fuelTanks', F.tanks); ls.set('fuelLog', F.log);
-      if (A.S.tab === 'fuel') render(true);
+      if (onFuel()) render(true);
     }).catch(function () {});
   }
 
@@ -47,8 +48,10 @@
       '<div class="fu-g">' + (x.type === 'Adjust' && x.from ? '\u2212' : '') + n1(x.gal) + '<span class="sub"> gal</span></div></div>';
   }
 
-  function render(noFetch) {
-    var own = A.me().owner, html = '<h2>Fuel</h2>';
+  var HEAD = '<h2>Fuel</h2>';
+  function render(noFetch, head) {
+    if (head) HEAD = head;
+    var own = A.me().owner, html = HEAD;
     if (!F.tanks) { $('#view').innerHTML = html + '<div class="empty">Loading\u2026</div>'; if (!noFetch) load(); return; }
     var tot = {}; F.tanks.forEach(function (t) { tot[t.fuel] = (tot[t.fuel] || 0) + Math.max(0, t.onHand); });
     html += '<div class="fu-tot">' + Object.keys(tot).map(function (k) { return '<div><div class="sub">' + esc(k) + ' on hand</div><div class="fu-big">' + n1(tot[k]) + ' <span class="sub">gal</span></div></div>'; }).join('') + '</div>';
@@ -103,7 +106,7 @@
     var ms = machines();
     A.sheet('<h2>\u26fd Fuel up</h2><label>From</label>' + chipRow('fu-from', tanks, lastTank) +
       '<label>Machine / truck</label><select id="fu-to"><option value=""></option>' + ms.map(function (m) { return '<option' + (m === machine ? ' selected' : '') + '>' + esc(m) + '</option>'; }).join('') +
-      '<option value="__other">Something else\u2026</option></select><input id="fu-other" placeholder="What did you fuel?" style="display:none;margin-top:6px">' +
+      '<option>Slip tank</option><option>Gas cans</option><option value="__other">Something else\u2026</option></select><input id="fu-other" placeholder="What did you fuel?" style="display:none;margin-top:6px">' +
       '<label>Gallons (from the pump meter)</label><input id="fu-g" inputmode="decimal" placeholder="e.g. 42.5">' +
       '<div class="two"><div><label>Date</label><input type="date" id="fu-d" value="' + isoToday() + '"></div><div><label>Note</label><input id="fu-n" placeholder="optional"></div></div>' +
       '<div class="sub">Machine hours fill in from the last logged hours.</div>' +
@@ -200,12 +203,10 @@
 
   A.fuelUp = function (machine) { if (!F.tanks) return load().then(function () { fillForm(machine); }); fillForm(machine); };
 
-  A.addTab({k: 'fuel', n: 'Fuel', ic: A.svg('<path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h12M6 8h6M14 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3"/>'),
-    render: function () { render(); },
-    fab: function () { fillForm(); }});
+  A.renderFuel = function (head, noFetch) { render(noFetch, head); };
 
   document.addEventListener('click', function (e) {
-    if (A.S.tab !== 'fuel') return;
+    if (!onFuel()) return;
     var b = e.target.closest('[data-fu]');
     if (b) { var k = b.getAttribute('data-fu'); return k === 'fill' ? fillForm() : k === 'move' ? moveForm() : deliveryForm(); }
     var mo = e.target.closest('[data-fumonth]'); if (mo) { F.month = mo.getAttribute('data-fumonth'); return render(true); }
