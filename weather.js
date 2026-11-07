@@ -32,7 +32,7 @@
 
   function fetchWx(force) {
     if (W.busy || !navigator.onLine) return Promise.resolve();
-    if (!force && W.data && W.data.current && W.data.current.is_day !== undefined && Date.now() - W.at < 15 * 60000) return Promise.resolve();
+    if (!force && W.data && W.data.days && Date.now() - W.at < 15 * 60000) return Promise.resolve();
     W.busy = true;
     return locate().then(function (pos) {
       var moved = !W.pos || Math.abs(W.pos.lat - pos.lat) > 0.02 || Math.abs(W.pos.lon - pos.lon) > 0.02;
@@ -41,8 +41,8 @@
         '&current=is_day,temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m' +
         '&hourly=is_day,temperature_2m,apparent_temperature,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m' +
         '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,snowfall_sum,wind_gusts_10m_max,sunrise,sunset' +
-        '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=3';
-      var jobs = [fetch(u).then(function (r) { return r.json(); })];
+        '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=10';
+      var jobs = [fetch(u).then(function (r) { return r.json(); }), nwsForecast(pos)];
       jobs.push(fetch('https://api.weather.gov/alerts/active?point=' + pos.lat + ',' + pos.lon, {headers: {Accept: 'application/geo+json'}})
         .then(function (r) { return r.json(); }).catch(function () { return null; }));
       if (pos.name) W.place = pos.name;
@@ -52,8 +52,8 @@
         }).catch(function () { W.place = W.place || 'Your location'; }));
       return Promise.all(jobs).then(function (rs) {
         if (!rs[0] || !rs[0].current) throw new Error('no data');
-        W.data = rs[0]; W.at = Date.now();
-        W.alerts = rs[1] && rs[1].features ? rs[1].features.map(function (f) {
+        W.data = mergeNws(rs[0], rs[1]); W.at = Date.now();
+        W.alerts = rs[2] && rs[2].features ? rs[2].features.map(function (f) {
           var p = f.properties || {}; return {event: p.event, headline: p.headline, ends: p.ends || p.expires, sev: p.severity};
         }) : [];
         ls.set('wx', W.data); ls.set('wxAt', W.at); ls.set('wxPlace', W.place); ls.set('wxAlerts', W.alerts);
@@ -62,11 +62,84 @@
     }).catch(function () {}).then(function () { W.busy = false; });
   }
 
+  // ---------- National Weather Service forecast (official, for this exact spot); Open-Meteo fills gusts, snow amounts and days 8-10 ----------
+  var NWS_H = {headers: {Accept: 'application/geo+json'}};
+  function nwsJson(u) { return fetch(u, NWS_H).then(function (r) { if (!r.ok) throw new Error('nws ' + r.status); return r.json(); }); }
+  function nwsForecast(pos) {
+    var g = ls.get('wxGrid', null);
+    var gp = g && Math.abs(g.lat - pos.lat) < 0.01 && Math.abs(g.lon - pos.lon) < 0.01 ? Promise.resolve(g)
+      : nwsJson('https://api.weather.gov/points/' + pos.lat + ',' + pos.lon).then(function (j) {
+          var x = {lat: pos.lat, lon: pos.lon, daily: j.properties.forecast, hourly: j.properties.forecastHourly}; ls.set('wxGrid', x); return x; });
+    return gp.then(function (x) {
+      return Promise.all([nwsJson(x.hourly), nwsJson(x.daily)]).then(function (r) { return {hourly: r[0].properties.periods || [], daily: r[1].properties.periods || []}; });
+    }).catch(function () { return null; });   // NWS down: Open-Meteo only
+  }
+  function mph(s) { var m = String(s || '').match(/(\d+)(?:\D+(\d+))?/); return m ? +(m[2] || m[1]) : null; }
+  function textIcon(t, day) {
+    t = String(t || '').toLowerCase();
+    if (/thunder/.test(t)) return '\u26c8\ufe0f';
+    if (/freezing|sleet|ice/.test(t)) return '\ud83e\uddca';
+    if (/snow|flurr|blizzard/.test(t)) return '\ud83c\udf28\ufe0f';
+    if (/rain|shower|drizzle/.test(t)) return /chance|slight|isolated|scattered/.test(t) ? '\ud83c\udf26\ufe0f' : '\ud83c\udf27\ufe0f';
+    if (/fog|haze|smoke/.test(t)) return '\ud83c\udf2b\ufe0f';
+    if (/mostly cloudy|^cloudy|overcast/.test(t)) return '\u2601\ufe0f';
+    if (/partly/.test(t)) return day ? '\u26c5' : '\u2601\ufe0f';
+    if (/mostly (sunny|clear)/.test(t)) return day ? '\ud83c\udf24\ufe0f' : '\ud83c\udf19';
+    if (/sunny|clear|fair/.test(t)) return day ? '\u2600\ufe0f' : '\ud83c\udf19';
+    if (/wind|breezy/.test(t)) return '\ud83d\udca8';
+    return day ? '\ud83c\udf24\ufe0f' : '\ud83c\udf19';
+  }
+  /** Put NWS numbers into the Open-Meteo shaped data the screen draws from. */
+  function mergeNws(om, nws) {
+    om.src = 'Open-Meteo';
+    var h = om.hourly, byHour = {};
+    h.time.forEach(function (t, i) { byHour[t.slice(0, 13)] = i; });
+    h.text = [];
+    if (nws && nws.hourly.length) {
+      om.src = 'NWS';
+      nws.hourly.forEach(function (p) {
+        var i = byHour[String(p.startTime).slice(0, 13)]; if (i === undefined) return;
+        h.temperature_2m[i] = p.temperature;
+        if (p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value !== null) h.precipitation_probability[i] = p.probabilityOfPrecipitation.value;
+        var w = mph(p.windSpeed); if (w !== null) h.wind_speed_10m[i] = w;
+        h.is_day[i] = p.isDaytime ? 1 : 0; h.text[i] = p.shortForecast;
+      });
+      var c = om.current, i0 = byHour[c.time.slice(0, 13)], p0 = nws.hourly[0];
+      if (p0) {
+        var dT = p0.temperature - c.temperature_2m;
+        c.temperature_2m = p0.temperature; c.apparent_temperature += dT; c.text = p0.shortForecast; c.is_day = p0.isDaytime ? 1 : 0;
+        var w0 = mph(p0.windSpeed); if (w0 !== null) c.wind_speed_10m = w0;
+        if (p0.relativeHumidity && p0.relativeHumidity.value !== null) c.relative_humidity_2m = p0.relativeHumidity.value;
+      }
+    }
+    // 10 days: NWS day/night forecasts (7 days), Open-Meteo for the rest
+    var od = om.daily, days = [], seen = {};
+    if (nws && nws.daily.length) nws.daily.forEach(function (p) {
+      var k = String(p.startTime).slice(0, 10), d = seen[k];
+      if (!d) { d = seen[k] = {date: k, src: 'NWS'}; days.push(d); }
+      var pop = p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value;
+      if (p.isDaytime) { d.hi = p.temperature; d.text = p.shortForecast; d.icon = textIcon(p.shortForecast, 1); d.day = p.detailedForecast; d.name = p.name; }
+      else { d.lo = p.temperature; d.night = p.detailedForecast; d.nightName = p.name; if (!d.icon) { d.icon = textIcon(p.shortForecast, 0); d.text = p.shortForecast; } }
+      d.pop = Math.max(d.pop || 0, pop || 0);
+    });
+    od.time.forEach(function (k, i) {
+      var d = seen[k];
+      if (!d) { if (days.length >= 10) return; d = seen[k] = {date: k, src: 'model', hi: od.temperature_2m_max[i], lo: od.temperature_2m_min[i],
+        pop: od.precipitation_probability_max[i] || 0, icon: code(od.weather_code[i], 1)[0], text: code(od.weather_code[i], 1)[1]}; days.push(d); }
+      if (d.lo === undefined && od.time[i + 1]) d.lo = undefined;
+      d.snow = od.snowfall_sum[i] || 0; d.gust = od.wind_gusts_10m_max[i];
+      if (d.src === 'NWS' && d.hi === undefined) d.hiModel = od.temperature_2m_max[i];
+    });
+    // a night's low belongs to the night that starts that evening; NWS gives it on the same date already
+    om.days = days.sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 10);
+    return om;
+  }
+
   function chip() {
     var b = document.getElementById('wx-btn'); if (!b) return;
     if (!W.data) { b.innerHTML = '\u2601\ufe0f <span>Weather</span>'; return; }
     var c = W.data.current;
-    b.innerHTML = code(c.weather_code, c.is_day)[0] + ' <span>' + Math.round(c.temperature_2m) + '\u00b0</span>' + (W.alerts.length ? ' <span style="color:var(--red)">\u26a0</span>' : '');
+    b.innerHTML = (c.text ? textIcon(c.text, c.is_day) : code(c.weather_code, c.is_day)[0]) + ' <span>' + Math.round(c.temperature_2m) + '\u00b0</span>' + (W.alerts.length ? ' <span style="color:var(--red)">\u26a0</span>' : '');
   }
 
   /** Plain-language heads-ups for the crew for the rest of today + tonight. */
@@ -99,7 +172,7 @@
   function draw() {
     var body = document.getElementById('wx-sheet'); if (!body) return;
     if (!W.data) { body.innerHTML = '<div class="empty">Getting the weather for where you are\u2026</div>'; return; }
-    var d = W.data, c = d.current, cc = code(c.weather_code, c.is_day), h = d.hourly;
+    var d = W.data, c = d.current, cc = c.text ? [textIcon(c.text, c.is_day), c.text] : code(c.weather_code, c.is_day), h = d.hourly;
     var idx = h.time.findIndex(function (t) { return t.slice(0, 13) >= c.time.slice(0, 13); }); if (idx < 0) idx = 0;
     var mins = Math.round((Date.now() - W.at) / 60000);
     var html = '<div class="kv">\ud83d\udccd ' + esc(W.place || 'Your location') + ' \u00b7 ' + Math.round(d.elevation * 3.281).toLocaleString() + ' ft \u00b7 updated ' +
@@ -112,21 +185,24 @@
       '<h3>Heads-up for the crew</h3><div class="card">' + headsUps(d).map(function (x) { return '<div style="margin:3px 0">' + esc(x) + '</div>'; }).join('') + '</div>' +
       '<h3>Next 12 hours</h3><div class="card" style="padding:6px 10px">';
     for (var i = idx; i < Math.min(h.time.length, idx + 12); i++) {
-      var hc = code(h.weather_code[i], h.is_day ? h.is_day[i] : 1);
+      var hc = h.text && h.text[i] ? [textIcon(h.text[i], h.is_day[i])] : code(h.weather_code[i], h.is_day ? h.is_day[i] : 1);
       html += '<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><div style="width:44px" class="sub">' + hr(h.time[i]) + '</div><div style="width:30px">' + hc[0] +
         '</div><div style="width:46px"><b>' + Math.round(h.temperature_2m[i]) + '\u00b0</b></div><div style="width:58px;color:var(--blue)" class="sub">' + (h.precipitation_probability[i] || 0) +
         '%</div><div class="sub grow" style="text-align:right">' + Math.round(h.wind_speed_10m[i]) + ' g' + Math.round(h.wind_gusts_10m[i]) + ' mph</div></div>';
     }
-    html += '</div><h3>3 days</h3><div class="card" style="padding:6px 10px">';
-    d.daily.time.forEach(function (t, i) {
-      var dc = code(d.daily.weather_code[i]), dt = new Date(t + 'T12:00');
-      var snow = d.daily.snowfall_sum[i] || 0;
-      html += '<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><div style="width:58px">' + (i === 0 ? 'Today' : dt.toLocaleDateString(undefined, {weekday: 'short'})) +
-        '</div><div style="width:30px">' + dc[0] + '</div><div style="width:80px"><b>' + Math.round(d.daily.temperature_2m_max[i]) + '\u00b0</b> / ' + Math.round(d.daily.temperature_2m_min[i]) +
-        '\u00b0</div><div class="sub grow" style="text-align:right">' + (d.daily.precipitation_probability_max[i] || 0) + '%' + (snow >= 0.3 ? ' \u00b7 ' + snow.toFixed(1) + ' in snow' : '') +
-        ' \u00b7 gusts ' + Math.round(d.daily.wind_gusts_10m_max[i]) + '</div></div>';
+    html += '</div><h3>10 days</h3><div class="card" style="padding:4px 10px">';
+    (d.days || []).forEach(function (x, i) {
+      var dt = new Date(x.date + 'T12:00'), label = i === 0 ? 'Today' : dt.toLocaleDateString(undefined, {weekday: 'short'}) + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate();
+      var hi = x.hi !== undefined ? Math.round(x.hi) + '\u00b0' : '\u2013', lo = x.lo !== undefined ? Math.round(x.lo) + '\u00b0' : '\u2013';
+      var extra = [(x.pop || 0) + '%']; if (x.snow >= 0.3) extra.push(x.snow.toFixed(1) + ' in snow'); if (x.gust) extra.push('g' + Math.round(x.gust));
+      var detail = [x.day ? (x.name ? x.name + ': ' : '') + x.day : '', x.night ? (x.nightName ? x.nightName + ': ' : '') + x.night : ''].filter(Boolean).join('\n\n');
+      html += '<details class="wx-day"' + (x.src === 'model' ? ' style="opacity:.75"' : '') + '><summary class="row" style="padding:7px 0;align-items:center">' +
+        '<div style="width:66px">' + esc(label) + '</div><div style="width:28px">' + (x.icon || '') + '</div>' +
+        '<div style="width:78px"><b>' + hi + '</b> / ' + lo + '</div><div class="sub grow" style="text-align:right">' + esc(extra.join(' \u00b7 ')) + '</div></summary>' +
+        '<div class="sub" style="padding:0 0 8px;white-space:pre-wrap;color:#ccc">' + esc(detail || (x.text || '') + (x.src === 'model' ? ' (computer model only \u2013 the Weather Service forecast goes 7 days)' : '')) + '</div></details>';
     });
-    html += '</div><div class="sub" style="margin:8px 2px">Based on your phone\u2019s location. Forecast: Open-Meteo \u00b7 alerts: National Weather Service.</div>' +
+    html += '</div><div class="sub" style="margin:8px 2px">Based on your phone\u2019s location. Forecast: ' + (d.src === 'NWS' ? 'National Weather Service (days 8\u201310, gusts and snow amounts from NOAA models via Open-Meteo)' : 'Open-Meteo (Weather Service not responding right now)') +
+      ' \u00b7 alerts: National Weather Service. Tap a day for the full forecast.</div>' +
       '<div class="btns"><button class="btn" data-act="x">Close</button></div>';
     body.innerHTML = html;
     var r = document.getElementById('wx-refresh'); if (r) r.onclick = function (e) { e.preventDefault(); e.stopPropagation(); W.at = 0; fetchWx(true); toast('Updating\u2026'); };
