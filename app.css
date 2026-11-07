@@ -195,3 +195,5 @@ nav#tabs button { font-size: 10.5px; }
 .tl-ck { display: block; box-sizing: border-box; width: 20px; height: 20px; min-width: 20px; margin-top: 1px; }
 
 .wx-day { border-bottom: 1px solid var(--line); } .wx-day summary { list-style: none; cursor: pointer; } .wx-day summary::-webkit-details-marker { display: none; }
+
+.wx-moon { width: 1em; height: 1em; vertical-align: -0.12em; display: inline-block; }

@@ -15,7 +15,8 @@
     66: ['\ud83e\uddca', 'Freezing rain'], 67: ['\ud83e\uddca', 'Freezing rain'], 71: ['\ud83c\udf28\ufe0f', 'Light snow'], 73: ['\ud83c\udf28\ufe0f', 'Snow'], 75: ['\u2744\ufe0f', 'Heavy snow'],
     77: ['\ud83c\udf28\ufe0f', 'Snow grains'], 80: ['\ud83c\udf26\ufe0f', 'Showers'], 81: ['\ud83c\udf27\ufe0f', 'Showers'], 82: ['\u26c8\ufe0f', 'Heavy showers'],
     85: ['\ud83c\udf28\ufe0f', 'Snow showers'], 86: ['\u2744\ufe0f', 'Heavy snow showers'], 95: ['\u26c8\ufe0f', 'Thunderstorms'], 96: ['\u26c8\ufe0f', 'Storms + hail'], 99: ['\u26c8\ufe0f', 'Storms + hail']};
-  var NIGHT = {0: ['\ud83c\udf19', 'Clear'], 1: ['\ud83c\udf19', 'Mostly clear'], 2: ['\u2601\ufe0f', 'Partly cloudy']};
+  var MOON = '<svg class="wx-moon" viewBox="0 0 24 24" aria-label="night"><path d="M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.8 6.8 0 0 0 10.8 10.8z" fill="#6ea8ff"/></svg>';
+  var NIGHT = {0: [MOON, 'Clear'], 1: [MOON, 'Mostly clear'], 2: ['\u2601\ufe0f', 'Partly cloudy']};
   function code(c, day) { return (day === 0 && NIGHT[c]) || CODES[c] || ['\ud83c\udf21\ufe0f', '']; }
   function dir(deg) { return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((deg || 0) % 360) / 45) % 8]; }
   function hr(iso) { var h = +String(iso).slice(11, 13); return ((h % 12) || 12) + (h < 12 ? 'a' : 'p'); }
@@ -84,10 +85,10 @@
     if (/fog|haze|smoke/.test(t)) return '\ud83c\udf2b\ufe0f';
     if (/mostly cloudy|^cloudy|overcast/.test(t)) return '\u2601\ufe0f';
     if (/partly/.test(t)) return day ? '\u26c5' : '\u2601\ufe0f';
-    if (/mostly (sunny|clear)/.test(t)) return day ? '\ud83c\udf24\ufe0f' : '\ud83c\udf19';
-    if (/sunny|clear|fair/.test(t)) return day ? '\u2600\ufe0f' : '\ud83c\udf19';
+    if (/mostly (sunny|clear)/.test(t)) return day ? '\ud83c\udf24\ufe0f' : MOON;
+    if (/sunny|clear|fair/.test(t)) return day ? '\u2600\ufe0f' : MOON;
     if (/wind|breezy/.test(t)) return '\ud83d\udca8';
-    return day ? '\ud83c\udf24\ufe0f' : '\ud83c\udf19';
+    return day ? '\ud83c\udf24\ufe0f' : MOON;
   }
   /** Put NWS numbers into the Open-Meteo shaped data the screen draws from. */
   function mergeNws(om, nws) {
