@@ -15,7 +15,8 @@
     66: ['\ud83e\uddca', 'Freezing rain'], 67: ['\ud83e\uddca', 'Freezing rain'], 71: ['\ud83c\udf28\ufe0f', 'Light snow'], 73: ['\ud83c\udf28\ufe0f', 'Snow'], 75: ['\u2744\ufe0f', 'Heavy snow'],
     77: ['\ud83c\udf28\ufe0f', 'Snow grains'], 80: ['\ud83c\udf26\ufe0f', 'Showers'], 81: ['\ud83c\udf27\ufe0f', 'Showers'], 82: ['\u26c8\ufe0f', 'Heavy showers'],
     85: ['\ud83c\udf28\ufe0f', 'Snow showers'], 86: ['\u2744\ufe0f', 'Heavy snow showers'], 95: ['\u26c8\ufe0f', 'Thunderstorms'], 96: ['\u26c8\ufe0f', 'Storms + hail'], 99: ['\u26c8\ufe0f', 'Storms + hail']};
-  function code(c) { return CODES[c] || ['\ud83c\udf21\ufe0f', '']; }
+  var NIGHT = {0: ['\ud83c\udf19', 'Clear'], 1: ['\ud83c\udf19', 'Mostly clear'], 2: ['\u2601\ufe0f', 'Partly cloudy']};
+  function code(c, day) { return (day === 0 && NIGHT[c]) || CODES[c] || ['\ud83c\udf21\ufe0f', '']; }
   function dir(deg) { return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(((deg || 0) % 360) / 45) % 8]; }
   function hr(iso) { var h = +String(iso).slice(11, 13); return ((h % 12) || 12) + (h < 12 ? 'a' : 'p'); }
   function hm(iso) { var t = String(iso).slice(11, 16).split(':'), h = +t[0]; return ((h % 12) || 12) + ':' + t[1] + (h < 12 ? ' am' : ' pm'); }
@@ -31,14 +32,14 @@
 
   function fetchWx(force) {
     if (W.busy || !navigator.onLine) return Promise.resolve();
-    if (!force && W.data && Date.now() - W.at < 15 * 60000) return Promise.resolve();
+    if (!force && W.data && W.data.current && W.data.current.is_day !== undefined && Date.now() - W.at < 15 * 60000) return Promise.resolve();
     W.busy = true;
     return locate().then(function (pos) {
       var moved = !W.pos || Math.abs(W.pos.lat - pos.lat) > 0.02 || Math.abs(W.pos.lon - pos.lon) > 0.02;
       W.pos = pos; ls.set('wxPos', pos);
       var u = 'https://api.open-meteo.com/v1/forecast?latitude=' + pos.lat + '&longitude=' + pos.lon +
-        '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m' +
-        '&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m' +
+        '&current=is_day,temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m' +
+        '&hourly=is_day,temperature_2m,apparent_temperature,precipitation_probability,precipitation,snowfall,weather_code,wind_speed_10m,wind_gusts_10m' +
         '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,snowfall_sum,wind_gusts_10m_max,sunrise,sunset' +
         '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=3';
       var jobs = [fetch(u).then(function (r) { return r.json(); })];
@@ -65,7 +66,7 @@
     var b = document.getElementById('wx-btn'); if (!b) return;
     if (!W.data) { b.innerHTML = '\u2601\ufe0f <span>Weather</span>'; return; }
     var c = W.data.current;
-    b.innerHTML = code(c.weather_code)[0] + ' <span>' + Math.round(c.temperature_2m) + '\u00b0</span>' + (W.alerts.length ? ' <span style="color:var(--red)">\u26a0</span>' : '');
+    b.innerHTML = code(c.weather_code, c.is_day)[0] + ' <span>' + Math.round(c.temperature_2m) + '\u00b0</span>' + (W.alerts.length ? ' <span style="color:var(--red)">\u26a0</span>' : '');
   }
 
   /** Plain-language heads-ups for the crew for the rest of today + tonight. */
@@ -98,7 +99,7 @@
   function draw() {
     var body = document.getElementById('wx-sheet'); if (!body) return;
     if (!W.data) { body.innerHTML = '<div class="empty">Getting the weather for where you are\u2026</div>'; return; }
-    var d = W.data, c = d.current, cc = code(c.weather_code), h = d.hourly;
+    var d = W.data, c = d.current, cc = code(c.weather_code, c.is_day), h = d.hourly;
     var idx = h.time.findIndex(function (t) { return t.slice(0, 13) >= c.time.slice(0, 13); }); if (idx < 0) idx = 0;
     var mins = Math.round((Date.now() - W.at) / 60000);
     var html = '<div class="kv">\ud83d\udccd ' + esc(W.place || 'Your location') + ' \u00b7 ' + Math.round(d.elevation * 3.281).toLocaleString() + ' ft \u00b7 updated ' +
@@ -111,7 +112,7 @@
       '<h3>Heads-up for the crew</h3><div class="card">' + headsUps(d).map(function (x) { return '<div style="margin:3px 0">' + esc(x) + '</div>'; }).join('') + '</div>' +
       '<h3>Next 12 hours</h3><div class="card" style="padding:6px 10px">';
     for (var i = idx; i < Math.min(h.time.length, idx + 12); i++) {
-      var hc = code(h.weather_code[i]);
+      var hc = code(h.weather_code[i], h.is_day ? h.is_day[i] : 1);
       html += '<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><div style="width:44px" class="sub">' + hr(h.time[i]) + '</div><div style="width:30px">' + hc[0] +
         '</div><div style="width:46px"><b>' + Math.round(h.temperature_2m[i]) + '\u00b0</b></div><div style="width:58px;color:var(--blue)" class="sub">' + (h.precipitation_probability[i] || 0) +
         '%</div><div class="sub grow" style="text-align:right">' + Math.round(h.wind_speed_10m[i]) + ' g' + Math.round(h.wind_gusts_10m[i]) + ' mph</div></div>';
