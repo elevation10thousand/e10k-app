@@ -189,3 +189,7 @@ nav#tabs button { font-size: 10.5px; }
 .fu-bar { height: 10px; background: #262626; border-radius: 6px; overflow: hidden; margin-top: 8px; } .fu-bar div { height: 100%; border-radius: 6px; }
 .fu-r { display: flex; gap: 10px; align-items: center; padding: 9px 12px; border-top: 1px solid #1f1f1f; cursor: pointer; } .fu-r:first-child { border-top: 0; }
 .fu-ic { width: 22px; text-align: center; } .fu-g { font-weight: 600; white-space: nowrap; }
+
+/* circle fix: the circle sits inside its tap area, so it must be a block (inline spans squash to a sliver on Android) */
+.tl-ckw { display: flex; align-items: flex-start; }
+.tl-ck { display: block; box-sizing: border-box; width: 20px; height: 20px; min-width: 20px; margin-top: 1px; }
