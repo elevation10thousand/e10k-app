@@ -577,18 +577,21 @@
   // ---------- swipe left on a task = push the due date ----------
   function usDate(d) { return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear(); }
   function canPush(t) { var m = me(); return t && t.status !== 'Done' && (m.owner || isMine(t, m)); }
-  function pushDate(t, d) {
-    var was = t.due || '';
-    t.due = usDate(d); enqueue('task.update', {id: t.id, fields: {due: t.due}}); save(); render();
+  function pushDate(t, d, why) {
+    var was = t.due || '', m = me();
+    if (!m.owner) { why = String(why || '').trim(); if (!why) { var wi = document.querySelector('.tl-sw .tl-why'); if (wi) wi.focus(); return toast('Type why it\u2019s getting pushed'); } }
+    var f = {due: usDate(d)}; if (!m.owner) { f.reason = why; t.notes = (t.notes ? t.notes + ' | ' : '') + todayStr() + ' ' + m.name + ': moved due date to ' + f.due + ' - ' + why; }
+    t.due = f.due; enqueue('task.update', {id: t.id, fields: f}); save(); render();
     undoToast('Moved to ' + d.toLocaleDateString('en-US', {weekday: 'short'}) + ' ' + (d.getMonth() + 1) + '/' + d.getDate(), function () {
-      t.due = was; enqueue('task.update', {id: t.id, fields: {due: was}}); save(); render(); toast('Put back'); });
+      var uf = {due: was}; if (!m.owner) uf.reason = 'undo';
+      t.due = was; enqueue('task.update', {id: t.id, fields: uf}); save(); render(); toast('Put back'); });
   }
   function swipeBar(row) {
     var t = findTask(row.getAttribute('data-task')); if (!t) return;
     if (!canPush(t)) { row.style.transform = ''; return toast('Only the office can change that date'); }
     closeSwipes();
     var bar = document.createElement('div'); bar.className = 'tl-sw';
-    bar.innerHTML = '<span class="sub">Push to</span><button data-p="1">Tomorrow</button><button data-p="mon">Next Mon</button><button data-p="7">+1 week</button>' +
+    bar.innerHTML = (me().owner ? '' : '<input class="tl-why" placeholder="Why? (required)">') + '<span class="sub">Push to</span><button data-p="1">Tomorrow</button><button data-p="mon">Next Mon</button><button data-p="7">+1 week</button>' +
       '<label class="tl-pick">Pick<input type="date"></label><button data-p="x" aria-label="Close">\u2715</button>';
     row.insertAdjacentElement('afterend', bar); row.classList.add('sw-open');
     bar.onclick = function (e) {
@@ -596,9 +599,11 @@
       var k = b.getAttribute('data-p'); if (k === 'x') return closeSwipes();
       var base = new Date(); base.setHours(12, 0, 0, 0);
       if (k === 'mon') base.setDate(base.getDate() + ((8 - base.getDay()) % 7 || 7)); else base.setDate(base.getDate() + +k);
-      pushDate(t, base);
+      pushDate(t, base, why());
     };
-    bar.querySelector('input').onchange = function (e) { var v = e.target.value; if (!v) return; var p2 = v.split('-'); pushDate(t, new Date(+p2[0], +p2[1] - 1, +p2[2], 12)); };
+    function why() { var w = bar.querySelector('.tl-why'); return w ? w.value : ''; }
+    bar.querySelector('input[type=date]').onchange = function (e) { var v = e.target.value; if (!v) return; var p2 = v.split('-'); pushDate(t, new Date(+p2[0], +p2[1] - 1, +p2[2], 12), why()); };
+    var wf = bar.querySelector('.tl-why'); if (wf) { wf.onclick = function (e) { e.stopPropagation(); }; setTimeout(function () { wf.focus(); }, 50); }
   }
   function closeSwipes() {
     Array.prototype.forEach.call(document.querySelectorAll('.tl-sw'), function (x) { x.remove(); });
