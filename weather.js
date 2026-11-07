@@ -102,12 +102,12 @@
         h.temperature_2m[i] = p.temperature;
         if (p.probabilityOfPrecipitation && p.probabilityOfPrecipitation.value !== null) h.precipitation_probability[i] = p.probabilityOfPrecipitation.value;
         var w = mph(p.windSpeed); if (w !== null) h.wind_speed_10m[i] = w;
-        h.is_day[i] = p.isDaytime ? 1 : 0; h.text[i] = p.shortForecast;
+        h.text[i] = p.shortForecast;   // day/night icon follows real sunrise/sunset (Open-Meteo is_day), not NWS's fixed 6-6
       });
       var c = om.current, i0 = byHour[c.time.slice(0, 13)], p0 = nws.hourly[0];
       if (p0) {
         var dT = p0.temperature - c.temperature_2m;
-        c.temperature_2m = p0.temperature; c.apparent_temperature += dT; c.text = p0.shortForecast; c.is_day = p0.isDaytime ? 1 : 0;
+        c.temperature_2m = p0.temperature; c.apparent_temperature += dT; c.text = p0.shortForecast;
         var w0 = mph(p0.windSpeed); if (w0 !== null) c.wind_speed_10m = w0;
         if (p0.relativeHumidity && p0.relativeHumidity.value !== null) c.relative_humidity_2m = p0.relativeHumidity.value;
       }
@@ -126,7 +126,7 @@
       var d = seen[k];
       if (!d) { if (days.length >= 10) return; d = seen[k] = {date: k, src: 'model', hi: od.temperature_2m_max[i], lo: od.temperature_2m_min[i],
         pop: od.precipitation_probability_max[i] || 0, icon: code(od.weather_code[i], 1)[0], text: code(od.weather_code[i], 1)[1]}; days.push(d); }
-      if (d.lo === undefined && od.time[i + 1]) d.lo = undefined;
+      if (d.lo === undefined && od.temperature_2m_min[i + 1] !== undefined) d.lo = od.temperature_2m_min[i + 1];   // that night's low (next morning)
       d.snow = od.snowfall_sum[i] || 0; d.gust = od.wind_gusts_10m_max[i];
       if (d.src === 'NWS' && d.hi === undefined) d.hiModel = od.temperature_2m_max[i];
     });
@@ -192,7 +192,7 @@
     }
     html += '</div><h3>10 days</h3><div class="card" style="padding:4px 10px">';
     (d.days || []).forEach(function (x, i) {
-      var dt = new Date(x.date + 'T12:00'), label = i === 0 ? 'Today' : dt.toLocaleDateString(undefined, {weekday: 'short'}) + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate();
+      var dt = new Date(x.date + 'T12:00'), label = i === 0 ? (x.hi === undefined ? 'Tonight' : 'Today') : dt.toLocaleDateString(undefined, {weekday: 'short'}) + ' ' + (dt.getMonth() + 1) + '/' + dt.getDate();
       var hi = x.hi !== undefined ? Math.round(x.hi) + '\u00b0' : '\u2013', lo = x.lo !== undefined ? Math.round(x.lo) + '\u00b0' : '\u2013';
       var extra = [(x.pop || 0) + '%']; if (x.snow >= 0.3) extra.push(x.snow.toFixed(1) + ' in snow'); if (x.gust) extra.push('g' + Math.round(x.gust));
       var detail = [x.day ? (x.name ? x.name + ': ' : '') + x.day : '', x.night ? (x.nightName ? x.nightName + ': ' : '') + x.night : ''].filter(Boolean).join('\n\n');
