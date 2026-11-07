@@ -822,7 +822,7 @@
   }
 
   function noteForm(t) {
-    sheet('<h2>Add a note</h2><div class="kv">' + esc(t.task) + '</div><textarea id="nt" placeholder="Tap the mic on your keyboard to talk"></textarea>' +
+    sheet('<h2>Add a note</h2><div class="kv">' + esc(t.task) + '</div><textarea id="nt" placeholder="Type, or tap 🎤 to talk"></textarea>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>',
       function (act) {
         if (act !== 'save') return closeSheet();
@@ -997,7 +997,7 @@
       '<div><label>End</label><input type="time" id="h-end" value="' + (pre ? pre.end : '') + '"></div></div>' +
       '<label>Machines used <span class="sub">(skip if none)</span></label><div id="h-mlist"></div>' +
       '<button class="btn" id="h-madd" style="width:100%">+ Add a machine</button>' +
-      '<label>What you did</label><textarea id="h-work" placeholder="Tap the mic on your keyboard to talk"></textarea>' +
+      '<label>What you did</label><textarea id="h-work" placeholder="Type, or tap 🎤 to talk"></textarea>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
     var n = 0;
     function addLine() {
