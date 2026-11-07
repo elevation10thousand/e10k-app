@@ -258,7 +258,12 @@
     var have = S.data && S.data.hash;
     return api('bootstrap', have ? {have: have} : {}).then(function (r) {
       if (!r.ok) return;
-      if (r.unchanged) return;
+      if (r.unchanged) {   // server copy unchanged: drop any leftover temporary tasks nothing is waiting on
+        var before = (S.data.tasks || []).length;
+        S.data.tasks = (S.data.tasks || []).filter(function (t) { return !/^new-/.test(t.id) || S.queue.some(function (q) { return q.args && q.args.tempId === t.id; }); });
+        if (S.data.tasks.length !== before) { save(); render(); }
+        return;
+      }
       if (S.queue.length) return;   // a change was made while this was loading: keep the local copy, reload later
       S.data = r;
       var seen = ls.get('seen', {}), nf = r.newFor || {};
