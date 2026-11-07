@@ -182,3 +182,10 @@ nav#tabs button { font-size: 10.5px; }
 .sam-q { margin: 4px 0; } .sam-a { margin: 2px 0 8px; color: #cfe0ff; }
 
 .tl-why { flex: 1 1 100%; margin: 0 0 4px; padding: 8px 10px; font-size: 15px; }
+
+/* fuel */
+.fu-tot { display: flex; gap: 10px; margin-bottom: 6px; } .fu-tot > div { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.fu-big { font: 600 26px var(--sans); }
+.fu-bar { height: 10px; background: #262626; border-radius: 6px; overflow: hidden; margin-top: 8px; } .fu-bar div { height: 100%; border-radius: 6px; }
+.fu-r { display: flex; gap: 10px; align-items: center; padding: 9px 12px; border-top: 1px solid #1f1f1f; cursor: pointer; } .fu-r:first-child { border-top: 0; }
+.fu-ic { width: 22px; text-align: center; } .fu-g { font-weight: 600; white-space: nowrap; }

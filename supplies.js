@@ -336,13 +336,17 @@
         return '<option' + (j === ls.get('lastJob', '') ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('') + '</select>' +
       '<label>How did you pay?</label><div class="chips" id="rc-paid" style="flex-wrap:wrap">' + RC.paidWith.map(function (p, i) {
         return '<button class="chip' + (i === 0 ? ' on' : '') + '" data-paid="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') + '</div>' +
+      '<label>Fuel? Which machine, truck or tank <span class="sub">(optional)</span></label><select id="rc-fuel"><option value="">Not fuel</option>' +
+        ((A.S.data.machines || []).map(function (x) { return x.name; }).concat(['Fuel trailer', 'Shop diesel tank', 'Shop gas tank', 'Gas cans'])).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('') + '</select>' +
       '<label>Note (optional)</label><input id="rc-note" placeholder="e.g. half of this was for the shop">' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send</button></div>';
     var paid = RC.paidWith[0];
     A.sheet(html, function (act) {
       if (act !== 'save') return A.closeSheet();
       if (!photos.length) return toast('Take a photo of the receipt');
-      var f = {job: $('#rc-job').value, paidWith: paid, note: $('#rc-note').value.trim(), photos: photos, clientId: A.uid()};
+      var fuelFor = $('#rc-fuel').value, note = $('#rc-note').value.trim();
+      if (fuelFor) note = 'Fuel for: ' + fuelFor + (note ? '. ' + note : '');
+      var f = {job: $('#rc-job').value, paidWith: paid, note: note, photos: photos, clientId: A.uid()};
       if (!f.job) return toast('Pick the job');
       ls.set('lastJob', f.job);
       RC.items = [{id: 'RC-' + f.clientId.slice(0, 8), uploaded: A.todayStr(), by: A.me().name, job: f.job, paidWith: paid, note: f.note, photos: photos.length, status: 'Reading'}].concat(RC.items || []);
