@@ -22,6 +22,15 @@
     return label + ' due ' + d.dueDate;
   }
 
+  /** One short line for the list: 'Service in 49 hrs' / 'Service 12 hrs overdue' / 'Hour meter needed'. */
+  function shortNext(m) {
+    if (m.hours === null || m.hours === undefined) return 'Hour meter needed';
+    var d = m.schedule.filter(function (x) { return x.left !== undefined || x.daysLeft !== undefined; })[0];
+    if (!d) return 'No service schedule yet';
+    if (d.left !== undefined) return d.left <= 0 ? 'Service overdue by ' + fmtH(-d.left) + ' hrs' : 'Next service in ' + fmtH(Math.round(d.left)) + ' hrs';
+    return 'Next service ' + d.dueDate;
+  }
+
   function load(quiet) {
     return A.api('equip.list').then(function (r) {
       if (!r.ok) return;
@@ -48,12 +57,14 @@
         return fa - fb || rank[a.state] - rank[b.state] || a.key.localeCompare(b.key);
       }).forEach(function (m) {
         var run = A.mlogOpenFor ? A.mlogOpenFor(m.key) : null;
-        html += '<div class="card tap' + flagCls(m) + (run ? ' running' : '') + '" data-machine="' + esc(m.key) + '"><div class="row"><div class="grow">' +
+        var probs = (m.issues || []).slice().sort(function (x, y) { return RANK[y.level] - RANK[x.level]; });
+        var probTxt = probs.length ? probs[0].text + (probs.length > 1 ? ' (+' + (probs.length - 1) + ' more)' : '') : String(lastNote(m.statusNote)).replace(/^\w+ \d\d\/\d\d\/\d{4}: /, '');
+        html += '<div class="card tap eqc' + flagCls(m) + (run ? ' running' : '') + '" data-machine="' + esc(m.key) + '">' +
           (run ? '<div class="sub" style="color:var(--green);font-weight:700">\ud83d\udfe2 Running \u00b7 ' + esc(run.operator || '') + ' \u00b7 ' + esc(run.job || '') + '</div>' : '') +
-          '<div class="title">' + (FL(m.status) ? '<span class="ficon">' + FL(m.status).ic + '</span>' : '') + esc(m.model) + '</div><div class="sub">' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) + ' hrs' +
-          (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') : '') + '</div>' +
-          (FL(m.status) ? '<div class="sub" style="color:' + FL(m.status).color + ';font-weight:600">' + esc(FL(m.status).label) + ': ' + esc(lastNote(m.statusNote)) + '</div>' : '') +
-          '</div><span class="pill ' + stateCls(m.state) + '">' + esc(nextLine(m)) + '</span></div></div>';
+          '<div class="row" style="align-items:baseline"><div class="title grow">' + (FL(m.status) ? FL(m.status).ic + ' ' : '') + esc(m.model) + '</div>' +
+          '<div class="sub" style="flex:none">' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) + ' hrs' : '') + '</div></div>' +
+          (FL(m.status) ? '<div class="eql" style="color:' + FL(m.status).color + ';font-weight:600">' + esc(probTxt) + '</div>' : '') +
+          '<div class="eql ' + stateCls(m.state) + '">' + esc(shortNext(m)) + '</div></div>';
       });
     }
     $('#view').innerHTML = html;

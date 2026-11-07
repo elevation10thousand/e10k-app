@@ -138,3 +138,9 @@ nav#tabs button { font-size: 10.5px; }
 .bfi { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .bfi:last-child { border-bottom: 0; }
 .bfi.bf-warn { color: var(--orange); } .bfi.bf-ok { color: var(--green); } .bfi.bf-info { color: var(--blue); }
+
+/* compact equipment list */
+.eqc { padding: 12px 14px; }
+.eqc .title { font-size: 17px; }
+.eql { font-size: 13px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.eql.block { color: var(--red); } .eql.wait { color: var(--orange); } .eql.done { color: var(--dim); }
