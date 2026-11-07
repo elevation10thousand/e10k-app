@@ -1217,7 +1217,7 @@
     var jobs = S.data.jobs.map(function (j) { return j.name; }), photos = [];
     var html = '<h2>New walkthrough</h2>' +
       '<label>Job</label><select id="w-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
-      '<label>What you saw</label><textarea id="w-sum" placeholder="Tap the mic on your keyboard and just talk"></textarea>' +
+      '<label>What you saw</label><textarea id="w-sum" placeholder="Type, or tap 🎤 and just talk"></textarea>' +
       '<label>What needs done</label><textarea id="w-act" placeholder="One item per line"></textarea>' +
       '<label>Photos</label><input type="file" id="w-ph" accept="image/*" multiple><div class="photos" id="w-prev"></div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
