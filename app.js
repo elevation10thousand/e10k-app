@@ -225,7 +225,7 @@
   var JOB_NAMES = {'task.update': 'Task change', 'task.create': 'New task', 'task.assign': 'Assign', 'time.create': 'Hours', 'time.clockin': 'Clock in',
     'time.clockout': 'Clock out', 'walk.create': 'Walkthrough', 'equip.check': 'Pre-start check', 'equip.problem': 'Problem report', 'equip.log': 'Service log',
     'equip.hours': 'Hours update', 'equip.service': 'Back in service', 'equip.flag': 'Level change', 'supplies.add': 'Supplies item', 'supplies.update': 'Supplies change',
-    'shop.add': 'Shop part', 'shop.decide': 'Shop part decision', 'receipt.add': 'Receipt', 'chat.send': 'Message', 'task.followup': 'Follow-up',
+    'shop.add': 'Shop part', 'shop.decide': 'Shop part decision', 'receipt.add': 'Receipt', 'chat.send': 'Message', 'task.followup': 'Follow-up', 'sam.ask': 'Note to Sam',
     'lead.email': 'Lead email log', 'walk.email': 'Walkthrough email log', 'mlog.start': 'Machine start', 'mlog.close': 'Machine close-out', 'mlog.cancel': 'Machine cancel', 'task.seen': 'Seen'};
   function failedSheet() {
     var html = '<h2>Not saved</h2>' + (S.persistFail ? '<div class="card" style="border-color:var(--red)">This phone ran out of room to keep changes. Keep E10K open with signal until the top bar clears.</div>' : '') +
@@ -752,6 +752,7 @@
       (t.phase ? '<div class="kv">' + esc(t.phase) + '</div>' : '') +
       (assignedBy(t) ? '<div class="kv">Assigned by <b>' + esc(assignedBy(t)) + '</b></div>' : '') +
       (t.notes ? '<div class="notes">' + esc(t.notes) + '</div>' : '') +
+      (m.owner ? samBlock(t) : '') +
       '<div class="btns">' +
       (t.status === 'Not Started' ? '<button class="btn go" data-act="start">Start</button>' : '') +
       (t.status !== 'Done' ? '<button class="btn ok" data-act="done">Done</button>' : '<button class="btn" data-act="reopen">Reopen</button>') +
@@ -769,6 +770,7 @@
       if (act === 'edit') return taskForm(t);
       if (act === 'assign') return assignForm(t);
       if (act === 'note') return noteForm(t);
+      if (act === 'sam') return samForm(t);
       if (act === 'status') return statusForm(t);
     });
   }
@@ -785,6 +787,33 @@
     sheet('<h2>Status</h2>' + opts.map(function (o) {
       return '<button class="btn ' + (o === t.status ? 'primary' : '') + '" style="width:100%;margin-bottom:8px" data-act="' + esc(o) + '">' + esc(o) + '</button>'; }).join(''),
       function (act) { setStatus(t, act); });
+  }
+
+  // ---------- Tell Sam (owners): a note to Sam on this task; Sam does it and replies here + on the phone ----------
+  function samAsksFor(t) { return ((S.data && S.data.samAsks) || []).filter(function (a) { return a.taskId === t.id; }); }
+  function samBlock(t) {
+    var asks = samAsksFor(t);
+    return (asks.length ? '<div class="sam-box">' + asks.map(function (a) {
+        var st = a.status === 'Done' ? '<span class="tl-done">done</span>' : a.status === 'Needs you' ? '<span class="tl-soon">needs you</span>' : '<span class="tl-prog">Sam is on it\u2026</span>';
+        return '<div class="sam-q"><b>' + esc(a.from) + ':</b> ' + esc(a.text) + ' <span class="sub">\u00b7 ' + st + '</span></div>' +
+          (a.reply ? '<div class="sam-a">\ud83e\udd16 <b>Sam:</b> ' + esc(a.reply) + '</div>' : '');
+      }).join('') + '</div>' : '') +
+      '<div class="btns"><button class="btn" data-act="sam" style="width:100%">\ud83e\udd16 Tell Sam</button></div>';
+  }
+  function samForm(t) {
+    sheet('<h2>\ud83e\udd16 Tell Sam</h2><div class="kv">' + esc(t.task) + '</div>' +
+      '<textarea id="sam-t" placeholder="Tap the mic: yes, set it up as a job, call it Mosquito Pass Gate"></textarea>' +
+      '<div class="sub">Sam reads these every couple of minutes, does it, and answers right here with a ping on your phone. Anything that would email or text a client comes back to you as a draft first.</div>' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send to Sam</button></div>',
+      function (act) {
+        if (act !== 'save') return openTask(t.id);
+        var v = $('#sam-t').value.trim(); if (!v) return toast('Say what you want done');
+        var cid = uid(), m = me();
+        S.data.samAsks = (S.data.samAsks || []).concat([{id: 'SR-' + cid, taskId: t.id, text: v, status: 'New', from: m.name}]);
+        t.notes = (t.notes ? t.notes + ' | ' : '') + todayStr() + ' ' + m.name + ' \u2192 Sam: ' + v;
+        enqueue('sam.ask', {fields: {taskId: t.id, text: v, clientId: cid}});
+        save(); render(); openTask(t.id); toast('Sent to Sam');
+      });
   }
 
   function noteForm(t) {
