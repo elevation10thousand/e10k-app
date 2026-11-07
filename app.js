@@ -660,6 +660,7 @@
         var tj = (S.data.tasks || []).filter(function (t) { return t.job === todayJob && t.status !== 'Done' && t.status !== 'Waiting' && !isLater(t); }).sort(bySc);
         var tjIds = {}; tj.forEach(function (t) { tjIds[t.id] = 1; });
         rest = rest.filter(function (t) { return !tjIds[t.id]; }); active = active.filter(function (t) { return !tjIds[t.id]; });
+        fresh = fresh.filter(function (t) { return !tjIds[t.id]; }); waiting = waiting.filter(function (t) { return !tjIds[t.id]; });
         html += tBox('today', '<span class="tl-dot" style="background:var(--green)"></span>Today at ' + esc(todayJob), tj.length + ' open',
           tj.length ? tj.map(function (t) { var r = tRow(t, false); return isMine(t, m) ? r : r.replace('<div class="tl-s">', '<div class="tl-s">' + esc(t.owner || 'nobody yet') + ' \u00b7 '); }) : ['<div class="tl-more">Nothing open on this job.</div>'],
           {limit: 99, cls: 'tl-today'});
