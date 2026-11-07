@@ -500,9 +500,16 @@
     var get = wireWho('as-who');
   }
 
+  /** Follow-ups stay out of the lists until their date comes up (they're still searchable). */
+  function isLater(t) {
+    if (!t || t.status === 'Done' || !/^follow[ -]?up/i.test(t.task || '')) return false;
+    var d = parseD(t.due); if (!d) return false;
+    var n = new Date(); n.setHours(0, 0, 0, 0); return d > n;
+  }
   function renderTasks() {
-    var all = S.data.tasks || [], m = me();
+    var all = S.data.tasks || [], m = me(), qq = S.filter.trim(), later = [];
     var list = all.filter(function (t) {
+      if (!qq && isLater(t) && (S.tab !== 'mine' || isMine(t, m))) { later.push(t); return false; }
       if (S.tab === 'mine') {
         if (!isMine(t, m)) return false;
         return t.status !== 'Done' || t.completed === todayStr();
@@ -537,7 +544,13 @@
       html += '<h3>' + esc(g) + ' (' + items.length + ')</h3>' + items.map(taskCard).join('');
     });
     if (!shown) html += '<div class="empty">' + (S.tab === 'mine' ? 'Nothing on your list. Nice.' : 'No open tasks.') + '</div>';
+    if (later.length) {
+      later.sort(function (a, b) { return parseD(a.due) - parseD(b.due); });
+      html += '<button class="chip" data-later="1" style="margin:14px 0 6px">\ud83d\udcc5 ' + later.length + ' follow-up' + (later.length > 1 ? 's' : '') + ' scheduled for later ' + (S.showLater ? '\u25b4' : '\u25be') + '</button>' +
+        (S.showLater ? later.map(taskCard).join('') : '');
+    }
     $('#view').innerHTML = html;
+    var lb = document.querySelector('[data-later]'); if (lb) lb.onclick = function (e) { e.stopPropagation(); S.showLater = !S.showLater; renderTasks(); };
     var qi = $('#q'); qi.oninput = function () { S.filter = qi.value; var pos = qi.selectionStart; renderTasks(); var n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
   }
 

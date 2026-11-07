@@ -73,11 +73,12 @@
       // optimistic update
       t.status = 'Done'; t.completed = A.todayStr();
       if (f.outcome) t.notes = (t.notes ? t.notes + ' | ' : '') + A.todayStr() + ' ' + A.me().name + ': ' + f.outcome;
-      if (when) D.tasks.push({id: 'new-' + A.uid(), entity: 'Real Estate', job: t.job, phase: t.phase || 'Lead', task: f.next || defaultNext(),
+      var tempId = 'new-' + A.uid();
+      if (when) D.tasks.push({id: tempId, entity: 'Real Estate', job: t.job, phase: t.phase || 'Lead', task: f.next || defaultNext(),
         owner: t.owner, priority: f.temp === 'Hot' ? 'High' : 'Medium', status: 'Not Started', due: when, added: A.todayStr(), notes: '', lead: f.lead});
       var l = lead();
       if (l) { l.last = A.todayStr(); if (f.temp) l.temp = f.temp; if (f.stage) l.stage = f.stage; l.nextDate = when; }
-      A.enqueue('task.followup', {fields: f});
+      A.enqueue('task.followup', {fields: f, tempId: when ? tempId : undefined});
       A.save(); A.closeSheet(); A.render();
       A.toast(when ? 'Done \u2013 follow-up set for ' + when.slice(0, 5) : 'Done \u2713');
     });
