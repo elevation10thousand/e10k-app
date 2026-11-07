@@ -1,8 +1,10 @@
-// E10K service worker: keeps the app shell on the phone so it opens with no signal,
+// E10K service worker: keeps the app shell on the phone so it opens instantly, even with one bar or no signal,
 // and shows phone alerts (web push) sent by Sam's server.
 // Data calls (script.google.com) are never cached here; the app keeps its own copy.
-var CACHE = 'e10k-shell-v30';
-var SHELL = ['./', 'index.html', 'app.css?v=13', 'app.js?v=23', 'equip.js?v=16', 'supplies.js?v=5', 'leads.js?v=14', 'chat.js?v=1', 'weather.js?v=1', 'manifest.webmanifest',
+// Strategy (11/06): files with ?v=N never change -> straight from the cache. The page itself (index.html / ./ and
+// the Planes page) -> the saved copy if the network takes more than 2.5 s, refreshed in the background.
+var CACHE = 'e10k-shell-v31';
+var SHELL = ['./', 'index.html', 'app.css?v=14', 'app.js?v=24', 'equip.js?v=17', 'supplies.js?v=6', 'leads.js?v=14', 'chat.js?v=1', 'weather.js?v=1', 'mlog.js?v=1', 'manifest.webmanifest',
   'logo-word.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png', 'badge-72.png'];
 
 self.addEventListener('install', function (e) {
@@ -15,16 +17,40 @@ self.addEventListener('activate', function (e) {
   }).then(function () { return self.clients.claim(); }));
 });
 
-self.addEventListener('fetch', function (e) {
-  var u = new URL(e.request.url);
-  if (e.request.method !== 'GET' || u.origin !== location.origin) return;
-  // network first (so updates show up), fall back to the saved copy offline
-  e.respondWith(fetch(e.request).then(function (r) {
-    var copy = r.clone();
-    caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
+function fromNetwork(req) {
+  return fetch(req).then(function (r) {
+    if (r && r.ok) { var copy = r.clone(); caches.open(CACHE).then(function (c) { c.put(req, copy); }); }
     return r;
-  }).catch(function () {
-    return caches.match(e.request).then(function (r) { return r || caches.match('index.html'); });
+  });
+}
+
+self.addEventListener('fetch', function (e) {
+  var req = e.request, u = new URL(req.url);
+  if (req.method !== 'GET' || u.origin !== location.origin) return;
+  var page = req.mode === 'navigate' || /\/$|index\.html$/.test(u.pathname);
+  if (!page && (u.search.indexOf('v=') >= 0 || /\.(png|jpg|webmanifest)$/.test(u.pathname))) {
+    // versioned / static: cache first
+    e.respondWith(caches.match(req).then(function (hit) { return hit || fromNetwork(req); }));
+    return;
+  }
+  // the page: network with a 2.5 s limit, else the saved copy (the network answer still refreshes the cache)
+  e.respondWith(new Promise(function (resolve) {
+    var done = false, net = fromNetwork(req);
+    var fallback = function () {
+      caches.match(req, {ignoreSearch: true}).then(function (hit) {
+        if (done) return;
+        if (hit) { done = true; resolve(hit); }
+      });
+    };
+    var t = setTimeout(fallback, 2500);
+    net.then(function (r) { clearTimeout(t); if (!done) { done = true; resolve(r); } }).catch(function () {
+      clearTimeout(t);
+      caches.match(req, {ignoreSearch: true}).then(function (hit) {
+        if (done) return; done = true;
+        resolve(hit || caches.match('index.html').then(function (x) { return x || new Response('Offline', {status: 503}); }));
+      });
+    });
+    e.waitUntil(net.catch(function () {}));
   }));
 });
 
@@ -40,7 +66,7 @@ self.addEventListener('push', function (e) {
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
   var url = (e.notification.data && e.notification.data.url) || './';
-  var task = url.split('#task=')[1] || '';
+  var task = url.split('#task=')[1] || (/#briefing/.test(url) ? 'BRIEFING' : '');
   e.waitUntil(self.clients.matchAll({type: 'window', includeUncontrolled: true}).then(function (list) {
     for (var i = 0; i < list.length; i++) {
       if (list[i].url.indexOf(self.registration.scope) === 0) {

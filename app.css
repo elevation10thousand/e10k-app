@@ -127,3 +127,14 @@ nav#tabs button { font-size: 10.5px; }
 .chat-bar { display: flex; gap: 6px; align-items: flex-end; padding: 8px 8px calc(8px + var(--safe-b)); border-top: 1px solid var(--line); background: #000; }
 .chat-bar textarea { flex: 1; min-height: 40px; max-height: 120px; resize: none; margin: 0; }
 .chat-bar .btn { flex: none; }
+
+/* 11/06: save status, machine hours (green = still running), briefing */
+.sync.bad { color: var(--red); font-weight: 700; cursor: pointer; }
+.savebar { margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--red); background: #3a0d0d; color: #fff; font: 600 14px var(--sans); cursor: pointer; }
+.savebar.hidden { display: none; }
+.card.running { border: 2px solid var(--green); background: #0d2a18; }
+.card.running .mlrow { margin-top: 10px; padding-top: 8px; border-top: 1px solid #1f4a2e; gap: 8px; align-items: center; }
+.card.brief { border: 2px solid var(--blue); background: #0f1a2b; }
+.bfi { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.bfi:last-child { border-bottom: 0; }
+.bfi.bf-warn { color: var(--orange); } .bfi.bf-ok { color: var(--green); } .bfi.bf-info { color: var(--blue); }

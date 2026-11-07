@@ -165,8 +165,10 @@ var S = { planes: [], tail: null, st: null, view: 'home' };
 var VIEWS = [['home','Status'],['flight','Fly'],['squawks','Squawks'],['maint','Maint'],['bills','Bills'],['history','History']];
 
 function call(action, data) {
-  return fetch(API, { method: 'POST', body: JSON.stringify({ action: 'planes', a: action, tail: S.tail, data: data || null, token: TOKEN }) })
-    .then(function (r) { return r.json(); })
+  var ac = window.AbortController ? new AbortController() : null;
+  var tm = ac ? setTimeout(function () { ac.abort(); }, data ? 60000 : 30000) : 0;
+  return fetch(API, { method: 'POST', signal: ac ? ac.signal : undefined, body: JSON.stringify({ action: 'planes', a: action, tail: S.tail, data: data || null, token: TOKEN }) })
+    .then(function (r) { clearTimeout(tm); return r.json(); }, function (e) { clearTimeout(tm); throw new Error('No signal - try again'); })
     .then(function (r) { if (r.ok) return r.data; throw new Error(r.error || 'Something went wrong'); });
 }
 function $(id) { return document.getElementById(id); }
@@ -181,8 +183,23 @@ function openSheet(html) { $('panel').innerHTML = html; $('sheet').style.display
 function closeSheet() { $('sheet').style.display = 'none'; }
 $('sheet').addEventListener('click', function (e) { if (e.target.id === 'sheet') closeSheet(); });
 
+// Cached first paint (11/06): show the last copy this phone saw right away, then refresh in the background.
+function tokKey_() { var h = 5381, t = String(TOKEN || ''); for (var i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); }
+function lsGet(k) { try { var v = localStorage.getItem('tp:' + tokKey_() + ':' + k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem('tp:' + tokKey_() + ':' + k, JSON.stringify(v)); } catch (e) {} }
+function stale(on) { var w = $('who'); if (!w) return; w.style.opacity = on ? '0.6' : ''; w.title = on ? 'Showing the last copy, updating…' : ''; }
 function init() {
+  var saved = null; try { saved = localStorage.getItem('hangarTail'); } catch (e) {}
+  var cp = lsGet('planes');
+  if (cp && cp.planes && cp.planes.length) {
+    S.planes = cp.planes; $('who').textContent = cp.me || '';
+    S.tail = S.planes.some(function (p) { return p.tail === saved; }) ? saved : S.planes[0].tail;
+    renderPlanes();
+    var cs = lsGet('state:' + S.tail);
+    if (cs) { S.st = cs; render(); stale(true); }
+  } else if (saved) S.tail = saved;   // lets the first call bring this plane's data along
   call('planes').then(function (r) {
+    lsSet('planes', {planes: r.planes, me: r.me});
     S.planes = r.planes;
     $('who').textContent = r.me || '';
     if (!S.planes.length) {
@@ -197,10 +214,12 @@ function init() {
       if (r.errors && r.errors.length) h += '<div style="margin-top:10px;font-size:12px;color:#8a94a6">Details for Sam: ' + esc(r.errors.join(' | ')) + '</div>';
       $('main').innerHTML = h + '</div>'; return;
     }
-    var saved = null; try { saved = localStorage.getItem('hangarTail'); } catch (e) {}
-    S.tail = S.planes.some(function (p) { return p.tail === saved; }) ? saved : S.planes[0].tail;
-    renderPlanes(); load();
-  }).catch(function (e) { $('main').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
+    var want = S.planes.some(function (p) { return p.tail === S.tail; }) ? S.tail : (S.planes.some(function (p) { return p.tail === saved; }) ? saved : S.planes[0].tail);
+    S.tail = want;
+    renderPlanes();
+    if (r.state && r.stateTail === want) { S.st = r.state; lsSet('state:' + want, r.state); stale(false); render(); }
+    else load();
+  }).catch(function (e) { if (S.st) { stale(true); toast('No signal – showing the last copy', true); } else $('main').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
 }
 function renderPlanes() {
   $('planes').innerHTML = S.planes.map(function (p) {
@@ -209,11 +228,15 @@ function renderPlanes() {
 }
 function pickPlane(t) { S.tail = t; try { localStorage.setItem('hangarTail', t); } catch (e) {} S.view = 'home'; renderPlanes(); load(); }
 function load() {
-  $('main').innerHTML = '<div id="loading">Loading ' + esc(S.tail) + '…</div>';
-  call('state').then(function (st) { S.st = st; render(); }).catch(function (e) { $('main').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
+  var cs = lsGet('state:' + S.tail);
+  if (cs) { S.st = cs; render(); stale(true); }
+  else $('main').innerHTML = '<div id="loading">Loading ' + esc(S.tail) + '…</div>';
+  var tail = S.tail;
+  call('state').then(function (st) { if (tail !== S.tail) return; S.st = st; lsSet('state:' + tail, st); stale(false); render(); })
+    .catch(function (e) { if (cs) { toast('No signal – showing the last copy', true); } else $('main').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
 }
 function act(action, data, msg) {
-  return call(action, data).then(function (st) { S.st = st; closeSheet(); toast(msg || 'Saved'); render(); return st; })
+  return call(action, data).then(function (st) { S.st = st; lsSet('state:' + S.tail, st); closeSheet(); toast(msg || 'Saved'); render(); return st; })
     .catch(function (e) { toast(e.message, true); throw e; });
 }
 function go(v) { S.view = v; render(); window.scrollTo(0, 0); }

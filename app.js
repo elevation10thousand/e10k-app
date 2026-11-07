@@ -21,15 +21,49 @@
     return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]; }); };
   var ls = {
     get: function (k, d) { try { var v = localStorage.getItem('e10k.' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set: function (k, v) { try { localStorage.setItem('e10k.' + k, JSON.stringify(v)); } catch (e) {} }
+    set: function (k, v) { try { localStorage.setItem('e10k.' + k, JSON.stringify(v)); return true; } catch (e) { return false; } }
   };
+  // IndexedDB key/value store: the outgoing queue (it can hold photos) and photo previews live here, so the small
+  // localStorage quota can never stop a change from being kept on the phone.
+  var idb = (function () {
+    var dbp = null;
+    function open() {
+      if (dbp) return dbp;
+      dbp = new Promise(function (res, rej) {
+        if (!window.indexedDB) return rej(new Error('no indexedDB'));
+        var r = indexedDB.open('e10k', 1);
+        r.onupgradeneeded = function () { if (!r.result.objectStoreNames.contains('kv')) r.result.createObjectStore('kv'); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error); };
+      });
+      dbp.catch(function () { dbp = null; });
+      return dbp;
+    }
+    function run(mode, fn) {
+      return open().then(function (db) {
+        return new Promise(function (res, rej) {
+          var t = db.transaction('kv', mode), req = fn(t.objectStore('kv'));
+          t.oncomplete = function () { res(req && req.result); };
+          t.onerror = t.onabort = function () { rej(t.error || new Error('idb')); };
+        });
+      });
+    }
+    return {
+      get: function (k) { return run('readonly', function (st) { return st.get(k); }); },
+      set: function (k, v) { return run('readwrite', function (st) { return st.put(v, k); }); },
+      del: function (k) { return run('readwrite', function (st) { return st['delete'](k); }); }
+    };
+  })();
 
   // ---------- token ----------
   function readToken() {
     var m = location.hash.match(/[#&]t=([A-Za-z0-9_\-]{24,})/);
     if (m) {
-      if (ls.get('token', null) !== m[1]) {   // new person on this phone: drop the old copy
-        ['data', 'hours', 'walks', 'queue', 'tab', 'chat', 'chatSeen', 'supplies', 'shopUsed', 'seen', 'equip'].forEach(function (k) { localStorage.removeItem('e10k.' + k); });
+      var oldTok = ls.get('token', null);
+      if (oldTok !== m[1]) {   // new person on this phone: drop the old copy (unsent changes are kept and still go out as the old person)
+        var oq = ls.get('queue', null);
+        if (oq && oq.length) { oq.forEach(function (j) { if (!j.tok) j.tok = oldTok; }); ls.set('queue', oq); }
+        ['data', 'hours', 'walks', 'tab', 'chat', 'chatSeen', 'supplies', 'shopUsed', 'seen', 'equip', 'mlogs'].forEach(function (k) { localStorage.removeItem('e10k.' + k); });
       }
       ls.set('token', m[1]); return m[1];
     }
@@ -42,20 +76,57 @@
     data: ls.get('data', null),          // bootstrap payload
     hours: ls.get('hours', []),
     walks: ls.get('walks', []),
-    queue: ls.get('queue', []),          // pending writes
+    queue: [],                           // pending writes (IndexedDB; loaded at start)
+    failed: [],                          // writes the server refused (shown so nothing is lost silently)
+    mlogs: ls.get('mlogs', []),          // recent machine logs (Hours tab)
     tab: ls.get('tab', 'mine'),
     filter: '', chip: 'All'
   };
   function me() { return S.data && S.data.me || {}; }
-  function save() { ls.set('data', S.data); ls.set('queue', S.queue); ls.set('hours', S.hours); ls.set('walks', S.walks); }
+  function save() {
+    if (!ls.set('data', S.data)) { try { localStorage.removeItem('e10k.walks'); } catch (e) {} ls.set('data', S.data); }
+    ls.set('hours', S.hours); ls.set('walks', S.walks); ls.set('mlogs', S.mlogs);
+    saveQueue();
+  }
+  // The queue is written to IndexedDB (fallback: localStorage). If neither works, a red banner says so.
+  var qSaving = null, qAgain = false;
+  function saveQueue() {
+    if (!S.qLoaded) return;
+    if (qSaving) { qAgain = true; return; }
+    var snap = {queue: S.queue.slice(), failed: S.failed.slice()};
+    qSaving = idb.set('q', snap).then(function () { S.persistFail = false; try { localStorage.removeItem('e10k.queue'); } catch (e) {} })
+      .catch(function () { S.persistFail = !(ls.set('queue', S.queue) && ls.set('failed', S.failed)); })
+      .then(function () { qSaving = null; syncBadge(); if (qAgain) { qAgain = false; saveQueue(); } });
+  }
+  function loadQueue() {
+    var legacy = ls.get('queue', []) || [], legacyF = ls.get('failed', []) || [];
+    return idb.get('q').catch(function () { return null; }).then(function (v) {
+      var q = (v && v.queue) || [], f = (v && v.failed) || [];
+      var ids = {}; q.concat(f).forEach(function (j) { ids[j.id] = 1; });
+      legacy.forEach(function (j) { if (!ids[j.id]) q.push(j); });
+      legacyF.forEach(function (j) { if (!ids[j.id]) f.push(j); });
+      S.queue = q.concat(S.queue); S.failed = f.concat(S.failed); S.qLoaded = true;
+      saveQueue();
+    });
+  }
 
   // ---------- api ----------
-  function api(action, args) {
-    var body = Object.assign({}, args || {}, {token: TOKEN, action: action});
-    return fetch(API, {method: 'POST', body: JSON.stringify(body), redirect: 'follow'})
-      .then(function (r) { return r.json(); })
+  var READS = {'bootstrap': 1, 'tasks': 1, 'time.list': 1, 'walk.list': 1, 'walk.get': 1, 'equip.list': 1, 'equip.history': 1, 'lead.list': 1,
+    'supplies.list': 1, 'shop.list': 1, 'shop.get': 1, 'chat.list': 1, 'chat.photo': 1, 'receipt.list': 1, 'receipt.get': 1, 'mlog.list': 1, 'briefing.get': 1};
+  /** POST to the backend with a time limit (a hung request on 1 bar never blocks the app). Writes carry a request id
+   *  (rid) so a resend after a lost answer is recognised by the server and never done twice. */
+  function api(action, args, opt) {
+    opt = opt || {};
+    var body = Object.assign({}, args || {}, {token: opt.token || TOKEN, action: action});
+    if (!READS[action] && action !== 'batch' && !body.rid) body.rid = uid() + uid();
+    var json = JSON.stringify(body);
+    var ms = opt.timeout || (READS[action] ? 25000 : (json.length > 400000 ? 120000 : 60000));
+    var ac = window.AbortController ? new AbortController() : null;
+    var tm = ac ? setTimeout(function () { ac.abort(); }, ms) : 0;
+    return fetch(API, {method: 'POST', body: json, redirect: 'follow', signal: ac ? ac.signal : undefined})
+      .then(function (r) { clearTimeout(tm); return r.json(); }, function (e) { clearTimeout(tm); throw e; })
       .then(function (j) {
-        if (!j.ok && j.error === 'not_signed_in') { signedOut(); throw new Error('not_signed_in'); }
+        if (!j.ok && j.error === 'not_signed_in') { if (!opt.token || opt.token === TOKEN) signedOut(); throw new Error('not_signed_in'); }
         return j;
       });
   }
@@ -63,41 +134,132 @@
   function uid() { return (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).slice(-8); }
 
   function enqueue(action, args) {
-    S.queue.push({id: uid(), action: action, args: args, tries: 0});
+    S.queue.push({id: uid() + uid(), action: action, args: args, tries: 0, tok: TOKEN, at: Date.now()});
     save(); syncBadge(); flush();
+  }
+
+  var RETRYABLE = /lock|timed out|timeout|too many|service|exceeded|try again|in_progress|unknown_action|internal|rate|not_run/i;
+  function isRetry(r) { return !r || r.retry || RETRYABLE.test(String(r.error || '')); }
+  function bigJob(j) { var a = j.args || {}, f = a.fields || {}; return !!((f.photos && f.photos.length) || (f.photo && f.photo.data)); }
+  function plainErr(e) { return String(e || 'error').replace(/_/g, ' '); }
+
+  /** What a saved change tells us back (real task ids, machine logs, clock) goes straight into the local copy. */
+  function applyResult(job, r) {
+    if (r.task) {
+      var temp = job.args && job.args.tempId;
+      if (temp && S.data) {
+        S.data.tasks = (S.data.tasks || []).filter(function (t) { return t.id !== temp || t.id === r.task.id; });
+        S.queue.forEach(function (q) { if (q.args && q.args.id === temp) q.args.id = r.task.id; });
+        var nf = ls.get('seen', {}); if (nf[temp]) { nf[r.task.id] = 1; ls.set('seen', nf); }
+      }
+      upsertTask(r.task);
+    }
+    if (S.data && r.log) {
+      var L = S.data.mlogOpen || (S.data.mlogOpen = []);
+      S.data.mlogOpen = L.filter(function (x) { return x.id !== r.log.id; });
+      if (r.log.status === 'Open') S.data.mlogOpen.push(r.log);
+    }
+    if (S.data && r.mlogs) r.mlogs.forEach(function (lg) {
+      S.data.mlogOpen = (S.data.mlogOpen || []).filter(function (x) { return x.id !== lg.id; });
+      if (lg.status === 'Open') S.data.mlogOpen.push(lg);
+    });
+    if (S.data && r.clock && job.action === 'time.clockin') S.data.clock = r.clock;
   }
 
   var flushing = false;
   function flush() {
-    if (flushing || !S.queue.length || !navigator.onLine) { syncBadge(); return Promise.resolve(); }
+    if (flushing || !S.qLoaded || !S.queue.length || !navigator.onLine) { syncBadge(); return Promise.resolve(); }
     flushing = true; syncBadge();
-    var job = S.queue[0];
-    return api(job.action, job.args).then(function (r) {
-      S.queue.shift();
-      if (!r.ok) toast('Could not save: ' + (r.error || 'error').replace(/_/g, ' '));
-      if (r.task) upsertTask(r.task);
-      save();
+    var first = S.queue[0], group = [first];
+    if (!bigJob(first)) for (var i = 1; i < S.queue.length && group.length < 10; i++) {
+      var nj = S.queue[i]; if (bigJob(nj) || (nj.tok || TOKEN) !== (first.tok || TOKEN)) break; group.push(nj);
+    }
+    var tok = first.tok || TOKEN;
+    var p = group.length === 1
+      ? api(first.action, Object.assign({}, first.args, {rid: first.id}), {token: tok}).then(function (r) { return [r]; })
+      : api('batch', {ops: group.map(function (j) { return Object.assign({}, j.args, {action: j.action, rid: j.id}); })}, {token: tok, timeout: 90000})
+          .then(function (r) { if (!r.ok || !r.results) throw new Error(r.error || 'batch'); return r.results; });
+    return p.then(function (results) {
+      group.forEach(function (job, i) {
+        var r = results[i];
+        if (r && r.ok) { S.queue.splice(S.queue.indexOf(job), 1); applyResult(job, r); }
+        else if (isRetry(r)) { job.tries++; job.lastError = r && r.error; }
+        else {
+          S.queue.splice(S.queue.indexOf(job), 1);
+          job.error = (r && r.error) || 'error'; job.when = Date.now();
+          S.failed.push(job);
+          toast('Couldn\u2019t save: ' + plainErr(job.error) + ' \u2013 tap the red note at the top');
+        }
+      });
     }).catch(function (e) {
-      job.tries++; save();
+      var signedOff = e && e.message === 'not_signed_in';
+      group.forEach(function (j) {
+        j.tries++; j.lastError = signedOff ? 'link no longer works' : 'no signal';
+        if (signedOff && j.tries > 3) { S.queue.splice(S.queue.indexOf(j), 1); j.error = 'link no longer works'; S.failed.push(j); }
+      });
     }).then(function () {
-      flushing = false; syncBadge();
-      if (S.queue.length && S.queue[0].tries < 50) setTimeout(flush, S.queue[0].tries ? 15000 : 100);
-      else if (!S.queue.length) refresh(true);
+      flushing = false; save(); syncBadge(); render();
+      if (S.queue.length) { var t = S.queue[0].tries; setTimeout(flush, t ? Math.min(60000, 3000 * Math.pow(2, t - 1)) : 100); }
+      else laterRefresh();
     });
   }
 
   function syncBadge() {
-    var el = $('#sync');
-    if (!navigator.onLine) { el.textContent = 'offline' + (S.queue.length ? ' \u00b7 ' + S.queue.length + ' to send' : ''); el.className = 'sync warn'; }
-    else if (S.queue.length) { el.textContent = 'sending ' + S.queue.length + '\u2026'; el.className = 'sync warn'; }
+    var el = $('#sync'); if (!el) return;
+    var n = S.queue.length, retrying = S.queue.some(function (j) { return j.tries > 0; }), nf = S.failed.length;
+    if (!navigator.onLine) { el.textContent = 'offline' + (n ? ' \u00b7 ' + n + ' not sent yet' : ''); el.className = 'sync warn'; }
+    else if (n && retrying) { el.textContent = n + ' not saved yet \u00b7 retrying'; el.className = 'sync warn'; }
+    else if (n) { el.textContent = 'sending ' + n + '\u2026'; el.className = 'sync warn'; }
+    else if (nf) { el.textContent = nf + ' couldn\u2019t save'; el.className = 'sync bad'; }
     else { el.textContent = ''; el.className = 'sync'; }
+    el.onclick = nf || S.persistFail ? failedSheet : null;
+    var bar = $('#savebar');
+    if (bar) {
+      var msg = S.persistFail ? '\u26a0 This phone can\u2019t store changes right now \u2013 keep E10K open until they send' + (n ? ' (' + n + ')' : '') :
+        (nf ? '\u26a0 ' + nf + ' change' + (nf > 1 ? 's' : '') + ' couldn\u2019t be saved \u2013 tap to see' : '');
+      bar.textContent = msg; bar.className = msg ? 'savebar' : 'savebar hidden';
+      bar.onclick = msg ? failedSheet : null;
+    }
   }
+
+  var JOB_NAMES = {'task.update': 'Task change', 'task.create': 'New task', 'task.assign': 'Assign', 'time.create': 'Hours', 'time.clockin': 'Clock in',
+    'time.clockout': 'Clock out', 'walk.create': 'Walkthrough', 'equip.check': 'Pre-start check', 'equip.problem': 'Problem report', 'equip.log': 'Service log',
+    'equip.hours': 'Hours update', 'equip.service': 'Back in service', 'equip.flag': 'Level change', 'supplies.add': 'Supplies item', 'supplies.update': 'Supplies change',
+    'shop.add': 'Shop part', 'shop.decide': 'Shop part decision', 'receipt.add': 'Receipt', 'chat.send': 'Message', 'task.followup': 'Follow-up',
+    'lead.email': 'Lead email log', 'walk.email': 'Walkthrough email log', 'mlog.start': 'Machine start', 'mlog.close': 'Machine close-out', 'mlog.cancel': 'Machine cancel', 'task.seen': 'Seen'};
+  function failedSheet() {
+    var html = '<h2>Not saved</h2>' + (S.persistFail ? '<div class="card" style="border-color:var(--red)">This phone ran out of room to keep changes. Keep E10K open with signal until the top bar clears.</div>' : '') +
+      (S.failed.length ? '<div class="sub" style="margin-bottom:8px">The server said no to these. Fix and redo them, try again, or drop them.</div>' : '') +
+      S.failed.map(function (j, i) {
+        var f = (j.args && j.args.fields) || {}, tk = j.args && j.args.id ? findTask(j.args.id) : null;
+        var what = f.task || (tk && tk.task) || f.work || f.item || f.text || f.summary || f.machine || '';   // never show task codes
+        return '<div class="card"><div class="title">' + esc(JOB_NAMES[j.action] || j.action) + '</div><div class="sub">' + esc(String(what).slice(0, 120)) + '</div>' +
+          '<div class="sub" style="color:var(--red)">' + esc(plainErr(j.error)) + '</div>' +
+          '<div class="btns"><button class="btn" data-act="drop:' + i + '">Drop it</button><button class="btn primary" data-act="retry:' + i + '">Try again</button></div></div>';
+      }).join('') + '<div class="btns"><button class="btn" data-act="x">Close</button></div>';
+    sheet(html, function (act) {
+      var m = String(act).split(':'), j = S.failed[+m[1]];
+      if (m[0] === 'retry' && j) { S.failed.splice(+m[1], 1); j.tries = 0; delete j.error; S.queue.push(j); save(); flush(); }
+      else if (m[0] === 'drop' && j) { S.failed.splice(+m[1], 1); save(); }
+      else return closeSheet();
+      syncBadge(); if (S.failed.length || S.persistFail) failedSheet(); else closeSheet();
+    });
+  }
+
+  // refresh after writes: the local copy is already updated, so a full reload can wait a little
+  var refreshT = null, lastRefresh = 0;
+  function laterRefresh() { clearTimeout(refreshT); refreshT = setTimeout(function () { refresh(true); }, 15000); }
 
   function refresh(quiet) {
     if (!TOKEN) return Promise.resolve();
     if (S.queue.length) return flush();
-    return api('bootstrap').then(function (r) {
+    clearTimeout(refreshT);
+    lastRefresh = Date.now();
+    var have = S.data && S.data.hash;
+    return api('bootstrap', have ? {have: have} : {}).then(function (r) {
       if (!r.ok) return;
+      if (r.unchanged) return;
+      if (S.queue.length) return;   // a change was made while this was loading: keep the local copy, reload later
       S.data = r;
       var seen = ls.get('seen', {}), nf = r.newFor || {};
       Object.keys(seen).forEach(function (k) { if (nf[k] === undefined) delete seen[k]; });
@@ -211,7 +373,8 @@
       var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' :
         (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' :
         (t.badge && t.badge() ? '<span class="badge">' + t.badge() + '</span>' :
-        (t.k === 'hours' && S.data && S.data.clock ? '<span class="badge" style="background:var(--green);min-width:10px;height:10px;padding:0"></span>' : '')));
+        (t.k === 'hours' && runningCount() ? '<span class="badge" style="background:var(--green)">' + runningCount() + '</span>' :
+        (t.k === 'hours' && S.data && S.data.clock ? '<span class="badge" style="background:var(--green);min-width:10px;height:10px;padding:0"></span>' : ''))));
       return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
     }).join('');
     $('#fab').classList.remove('hidden');
@@ -221,6 +384,48 @@
     var ex = EXTRA_TABS.filter(function (x) { return x.k === S.tab; })[0];
     if (ex) return ex.render();
     renderTasks();
+  }
+
+  function runningCount() { return ((S.data && S.data.mlogOpen) || []).length; }
+
+  // ---------- briefing (written by Sam's server at 7:30 am and 5 pm; newest one for today) ----------
+  function briefHidden(b) { return ls.get('briefHide', '') === (b.date + b.mode); }
+  function briefingCard() {
+    var b = S.data && S.data.briefing; if (!b || !b.data || briefHidden(b)) return '';
+    var d = b.data, secs = d.sections || [], n = secs.reduce(function (a, x) { return a + ((x.items || []).length); }, 0);
+    var warn = secs.reduce(function (a, x) { return a + (x.items || []).filter(function (i) { return i.tone === 'warn'; }).length; }, 0);
+    return '<div class="card tap brief" data-brief="open"><div class="row"><div class="grow"><div class="title">' + (b.mode === 'evening' ? '\ud83c\udf05 ' : '\u2600\ufe0f ') +
+      esc(d.title || (b.mode === 'evening' ? 'Evening briefing' : 'Morning briefing')) + '</div>' +
+      '<div class="sub">' + esc(secs.slice(0, 3).map(function (x) { return x.heading + ' (' + (x.items || []).length + ')'; }).join(' \u00b7 ') || (n + ' items')) + '</div></div>' +
+      (warn ? '<span class="pill late">' + warn + ' heads-up</span>' : '<span class="pill">Read</span>') + '</div></div>';
+  }
+  function briefingHtml(b) {
+    var d = b.data || {};
+    return '<h2>' + esc(d.title || (b.mode === 'evening' ? 'Evening briefing' : 'Morning briefing')) + '</h2>' +
+      '<div class="kv">' + esc((b.mode === 'evening' ? 'Evening' : 'Morning') + ' \u00b7 ' + b.date + (b.generatedAt ? ' \u00b7 ' + b.generatedAt : '')) + '</div>' +
+      (d.sections || []).map(function (sec) {
+        return '<h3>' + esc(sec.heading || '') + '</h3><div class="card">' + ((sec.items || []).map(function (it) {
+          return '<div class="bfi ' + (it.tone ? 'bf-' + esc(it.tone) : '') + '"><div>' + esc(it.text || '') + '</div>' + (it.sub ? '<div class="sub">' + esc(it.sub) + '</div>' : '') + '</div>';
+        }).join('') || '<div class="sub">Nothing here.</div>') + '</div>';
+      }).join('') +
+      '<div class="btns"><button class="btn" data-act="hide">Hide for today</button><button class="btn primary" data-act="x">Close</button></div>';
+  }
+  function openBriefing() {
+    var shown = false;
+    var show = function (b) {
+      if (!b || !b.data) return toast('No briefing yet today');
+      shown = true;
+      sheet(briefingHtml(b), function (act) { if (act === 'hide') { ls.set('briefHide', b.date + b.mode); render(); } closeSheet(); });
+    };
+    var b = S.data && S.data.briefing;
+    if (b && b.data) show(b);
+    if (!navigator.onLine) { if (!shown) toast('No briefing saved on this phone yet'); return; }
+    api('briefing.get').then(function (r) {
+      if (!r.ok || !S.data) return;
+      var had = JSON.stringify(S.data.briefing || null); S.data.briefing = r.briefing; save();
+      if (had !== JSON.stringify(r.briefing || null)) { if (r.briefing) show(r.briefing); else if (!shown) toast('No briefing yet today'); render(); }
+      else if (!shown) toast('No briefing yet today');
+    }).catch(function () { if (!shown) toast('Needs a signal to load the briefing'); });
   }
 
   var FLAGS = {
@@ -314,7 +519,7 @@
     var chips = ['All'].concat(names);
     if (chips.indexOf(S.chip) < 0) S.chip = 'All';
     var q = S.filter.toLowerCase();
-    var html = (S.tab === 'mine' ? alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
+    var html = (S.tab === 'mine' ? briefingCard() + alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
     if (names.length > 1) html += '<div class="chips">' + chips.map(function (c) {
       return '<button class="chip ' + (S.chip === c ? 'on' : '') + '" data-chip="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>';
     var shown = 0;
@@ -358,6 +563,7 @@
 
   function openTask(id) {
     if (id === 'CHAT') { if (window.E10K.openChat) window.E10K.openChat(); return; }
+    if (id === 'BRIEFING' || id === 'briefing') return openBriefing();
     var t = findTask(id); if (!t) return;
     var m = me();
     if (isNewFor(t)) { markSeen(t); setTimeout(render, 0); }
@@ -486,6 +692,7 @@
       '<button class="btn ok" data-clock="out" style="width:100%;margin-top:10px">Clock out &amp; finish log</button></div>';
     else html += '<button class="btn primary" data-clock="in" style="width:100%;padding:16px;font-size:17px;margin-bottom:10px">\u23f1 Clock in</button>' +
       '<div class="sub" style="margin:-4px 2px 10px">Forgot to clock in? Tap + to log the hours after.</div>';
+    html += (window.E10K.mlogBanner ? window.E10K.mlogBanner('hours') : '');
     var oc = (S.data.onClock || []).filter(function (e) { return e.person !== me().name; });
     if (me().owner && oc.length) html += '<h3>On the clock now</h3>' + oc.map(function (e) {
       return '<div class="card"><div class="title">' + esc(e.person) + ' \u00b7 ' + esc(e.job) + '</div><div class="sub">Since ' + esc(e.start) +
@@ -497,16 +704,22 @@
       if (h.date !== last) { html += '<h3>' + esc(h.date) + '</h3>'; last = h.date; }
       html += '<div class="card"><div class="row"><div class="grow"><div class="title">' + esc(h.job) + '</div>' +
         '<div class="sub">' + esc((me().owner ? h.person + ' \u00b7 ' : '') + h.start + ' \u2013 ' + h.end) + (h.total ? ' (' + esc(h.total) + ' hrs)' : '') + '</div>' +
-        (h.machines || (h.machine ? [{machine: h.machine, meterStart: h.meterStart, meterEnd: h.meterEnd}] : [])).map(function (x) {
+        (h.machines || (h.machine ? [{machine: h.machine, meterStart: h.meterStart, meterEnd: h.meterEnd}] : [])).concat(machLogsFor(h)).map(function (x) {
           var hrs = x.hours || (x.meterEnd && x.meterStart ? Math.round((x.meterEnd - x.meterStart) * 10) / 10 : '');
-          return '<div class="sub">\u2699 ' + esc(x.machine) + (x.meterStart ? ' \u00b7 ' + esc(x.meterStart) + (x.meterEnd ? '\u2192' + esc(x.meterEnd) : '') : '') +
-            (hrs !== '' ? ' \u00b7 ' + esc(hrs) + ' hrs' : '') + '</div>';
+          return '<div class="sub"' + (x.status === 'Open' ? ' style="color:var(--green);font-weight:600"' : '') + '>' + (x.status === 'Open' ? '\ud83d\udfe2 ' : '\u2699 ') + esc(x.machine) +
+            (x.meterStart ? ' \u00b7 ' + esc(x.meterStart) + (x.meterEnd ? '\u2192' + esc(x.meterEnd) : '') : '') +
+            (hrs !== '' ? ' \u00b7 ' + esc(hrs) + ' hrs' : '') + (x.status === 'Open' ? ' \u00b7 still running' : '') + '</div>';
         }).join('') +
         (h.work ? '<div class="sub">' + esc(h.work) + '</div>' : '') + '</div>' + (h.pending ? '<span class="pill wait">sending</span>' : '') + '</div></div>';
     });
     $('#view').innerHTML = html;
     if (!noFetch && navigator.onLine && !S.queue.length) api('time.list').then(function (r) {
-      if (r.ok) { S.hours = r.entries; save(); if (S.tab === 'hours') renderHours(true); } }).catch(function () {});
+      if (r.ok) { S.hours = r.entries; S.mlogs = r.mlogs || []; save(); if (S.tab === 'hours') renderHours(true); } }).catch(function () {});
+  }
+  /** Machine Log rows where this entry's person ran a machine on that day + job (machine hours live apart from man hours). */
+  function machLogsFor(h) {
+    if (h.pending) return [];
+    return (S.mlogs || []).filter(function (x) { return x.operator === h.person && x.date === h.date && x.job === h.job && x.status !== 'Cancelled'; });
   }
 
   function machLabel(x) { var L = FLAGS[x.status]; return (L ? L.ic + ' ' : '') + x.name + (L ? ' (' + L.short + ')' : ''); }
@@ -517,7 +730,7 @@
       '<button class="chip" data-mdel="1" style="margin-left:8px">\u2715</button></div>' +
       '<div class="sub h-warn" style="display:none;font-weight:600;margin-top:6px"></div>' +
       '<div class="two h-met" style="display:none"><div><label>Meter start</label><input inputmode="decimal" class="h-ms"></div>' +
-      '<div><label>Meter end</label><input inputmode="decimal" class="h-me" placeholder="at end"></div></div>' +
+      '<div><label>Meter end</label><input inputmode="decimal" class="h-me" placeholder="blank = still running"></div></div>' +
       '<div class="h-hrsbox" style="display:none"><label>Hours on it</label><input inputmode="decimal" class="h-hrs" placeholder="e.g. 1.5"></div>' +
       '</div>';
   }
@@ -548,7 +761,10 @@
     if (!hint) { msEl.insertAdjacentHTML('afterend', '<div class="sub h-mshint"></div>'); hint = el.querySelector('.h-mshint'); }
     hint.textContent = known ? 'from last log' : 'no hours on file yet';
     msEl.oninput = function () { msEl.setAttribute('data-auto', '0'); };
-    var meEl = el.querySelector('.h-me'); if (meEl) meEl.placeholder = 'hour meter now';
+    var meEl = el.querySelector('.h-me'); if (meEl) meEl.placeholder = 'blank = still running';
+    var run = mc && window.E10K.mlogOpenFor ? window.E10K.mlogOpenFor(mc.name) : null;
+    if (run) { if (!msEl.value || msEl.getAttribute('data-auto') === '1') { msEl.value = run.meterStart || msEl.value; msEl.setAttribute('data-auto', '1'); }
+      hint.textContent = '\ud83d\udfe2 running since ' + (run.startedAt || run.date) + ' (' + run.startedBy + ') \u2013 your end reading closes it'; }
     var w = el.querySelector('.h-warn'), L = mc && FLAGS[mc.status];
     if (L) { w.style.display = 'block'; w.style.color = L.color; w.textContent = L.ic + ' ' + L.label + (mc.note ? ': ' + mc.note : ''); }
     else w.style.display = 'none';
@@ -591,8 +807,8 @@
           hours: el.querySelector('.h-hrs').value.trim()};
         if (mc && mc.meter) {
           if (!x.meterStart || isNaN(+x.meterStart)) { el.querySelector('.h-ms').focus(); return toast('Enter the hour meter at start for ' + name); }
-          if (!x.meterEnd || isNaN(+x.meterEnd)) { el.querySelector('.h-me').focus(); return toast('Enter the hour meter at the end for ' + name); }
-          if (+x.meterEnd < +x.meterStart) { el.querySelector('.h-me').focus(); return toast(name + ': meter end is lower than start'); }
+          if (x.meterEnd && isNaN(+x.meterEnd)) { el.querySelector('.h-me').focus(); return toast('The end reading for ' + name + ' isn\u2019t a number'); }
+          if (x.meterEnd && +x.meterEnd < +x.meterStart) { el.querySelector('.h-me').focus(); return toast(name + ': meter end is lower than start'); }
           if (mc.hours !== null && mc.hours !== undefined && +x.meterStart < mc.hours &&
             !confirm(name + ': meter start (' + x.meterStart + ') is lower than the last reading (' + mc.hours + '). Save anyway?')) return;
           if (mc.hours !== null && mc.hours !== undefined && +x.meterStart > mc.hours + 300 &&
@@ -604,22 +820,35 @@
       var t0 = to24(f.start).split(':'), t1 = to24(f.end).split(':');
       var span = ((+t1[0] * 60 + +t1[1]) - (+t0[0] * 60 + +t0[1]) + 1440) % 1440 / 60;
       var onM = f.machines.reduce(function (a, x) { var v = x.meterEnd && x.meterStart ? x.meterEnd - x.meterStart : (+x.hours || 0); return a + (v > 0 ? v : 0); }, 0);
+      var stillOn = f.machines.filter(function (x) { var mc = mach(x.machine); return mc && (mc.meter ? !x.meterEnd : !x.hours); }).map(function (x) { return x.machine; });
       if (onM > span + 0.25 && !confirm('Machine hours (' + onM.toFixed(1) + ') are more than your time on the job (' + span.toFixed(1) + ' hrs). Save anyway?')) return;
-      f.machines.forEach(function (x) { var mc = mach(x.machine); if (mc && mc.meter) mc.hours = +(x.meterEnd || x.meterStart); });
+      f.machines.forEach(function (x) { var mc = mach(x.machine); if (mc && mc.meter && (x.meterEnd || x.meterStart)) mc.hours = Math.max(mc.hours || 0, +(x.meterEnd || x.meterStart)); });
+      var src = pre ? pre.id : null;   // filled below for after-the-fact logs
+      var localLogs = function (base) {   // same IDs the server gives, so a close-out made before this syncs still finds it
+        f.machines.forEach(function (x, i) {
+          var run = window.E10K.mlogOpenFor ? window.E10K.mlogOpenFor(x.machine) : null, mc = mach(x.machine);
+          var done = mc && (mc.meter ? !!x.meterEnd : !!x.hours);
+          if (run && done) S.data.mlogOpen = S.data.mlogOpen.filter(function (l) { return l !== run; });
+          if (!run && !done) (S.data.mlogOpen = S.data.mlogOpen || []).push({id: 'ML-' + String(base).slice(0, 8) + '-' + (i + 1), date: f.date, machine: x.machine, job: f.job,
+            operator: f.person || m.name, meterStart: x.meterStart, status: 'Open', startedBy: m.name, startedAt: to12(nowHM()), pending: true});
+        });
+      };
       ls.set('lastJob', f.job);
       if (pre) {
         f.id = pre.id; f.date = pre.date;
         S.data.clock = null;
         S.hours = (S.hours || []).filter(function (h) { return h.id !== pre.id; });
         S.hours.unshift(Object.assign({pending: true, person: m.name}, f));
+        localLogs(f.id);
         enqueue('time.clockout', {fields: f});
-        save(); closeSheet(); render(); toast('Clocked out \u2013 hours logged');
+        save(); closeSheet(); render(); toast('Clocked out \u2013 hours logged' + (stillOn.length ? '. Still running: ' + stillOn.join(', ') : ''));
         return;
       }
       f.clientId = uid();
+      localLogs(f.clientId);
       S.hours.unshift(Object.assign({pending: true, person: f.person || m.name}, f));
       enqueue('time.create', {fields: f});
-      save(); closeSheet(); render(); toast('Hours logged');
+      save(); closeSheet(); render(); toast('Hours logged' + (stillOn.length ? '. Still running: ' + stillOn.join(', ') : ''));
     });
     $('#h-madd').onclick = function (e) { e.stopPropagation(); addLine(); };
     if (pre && pre.machines) pre.machines.forEach(function (x) {
@@ -685,8 +914,8 @@
       if (act === 'mail') return walkEmailForm(w);
       closeSheet();
     });
-    if (w.photos && w.id) api('walk.get', {id: w.id}).then(function (r) {
-      var el = $('#wd-ph'); if (!el || !r.ok) return;
+    var showPh = function (r) {
+      var el = $('#wd-ph'); if (!el || !r || !r.ok) return;
       el.innerHTML = r.photos.map(function (ph) {
         return ph.data ? '<img src="' + ph.data + '" data-big="1" style="cursor:zoom-in">' : '<a href="' + esc(ph.url) + '" target="_blank" class="sub">Open photo</a>';
       }).join('');
@@ -697,6 +926,13 @@
         v.innerHTML = '<img src="' + im.src + '" style="max-width:100%;max-height:100%">'; v.onclick = function () { v.remove(); };
         document.body.appendChild(v);
       };
+    };
+    if (w.photos && w.id) idb.get('walk:' + w.id).catch(function () { return null; }).then(function (hit) {
+      if (hit && hit.ok) return showPh(hit);
+      return api('walk.get', {id: w.id}).then(function (r) {
+        showPh(r);
+        if (r.ok && r.photos.every(function (x) { return x.data; })) idb.set('walk:' + w.id, r).catch(function () {});
+      });
     }).catch(function () { var el = $('#wd-ph'); if (el) el.innerHTML = '<div class="sub">Photos need a signal.</div>'; });
   }
 
@@ -757,10 +993,10 @@
     return new Promise(function (res, rej) {
       var img = new Image(), url = URL.createObjectURL(file);
       img.onload = function () {
-        var max = 1600, w = img.width, h = img.height, k = Math.min(1, max / Math.max(w, h));
+        var max = 1280, w = img.width, h = img.height, k = Math.min(1, max / Math.max(w, h));
         var c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.8));
+        URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.7));
       };
       img.onerror = rej; img.src = url;
     });
@@ -854,6 +1090,7 @@
     var c = e.target.closest('[data-chip]'); if (c) { S.chip = c.getAttribute('data-chip'); return renderTasks(); }
     var wj = e.target.closest('[data-wjob]'); if (wj) { ls.set('walkJob', wj.getAttribute('data-wjob')); return renderWalks(); }
     var wk = e.target.closest('[data-walk]'); if (wk) { var w = (S.walks || [])[+wk.getAttribute('data-walk')]; if (w) return walkDetail(w); }
+    var bf = e.target.closest('[data-brief]'); if (bf) return openBriefing();
     var t = e.target.closest('[data-task]'); if (t) return openTask(t.getAttribute('data-task'));
     var a = e.target.closest('#sheet [data-act]'); if (a && sheetHandler) return sheetHandler(a.getAttribute('data-act'));
     if (e.target.classList.contains('sheet-bg')) return closeSheet();
@@ -868,7 +1105,10 @@
   };
   window.addEventListener('online', function () { syncBadge(); flush().then(function () { refresh(true); }); });
   window.addEventListener('offline', syncBadge);
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(true); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    if (S.queue.length) flush(); else if (Date.now() - lastRefresh > 60000) refresh(true);
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
@@ -876,17 +1116,18 @@
       if (e.data && e.data.openTask) refresh(true).then(function () { openTask(e.data.openTask); });
     });
   }
-  var deep = (location.hash.match(/#task=([A-Za-z0-9\-]+)/) || [])[1];
+  var deep = (location.hash.match(/#task=([A-Za-z0-9\-]+)/) || [])[1] || (/#briefing\b/.test(location.hash) ? 'BRIEFING' : '');
   if (deep) setTimeout(function () { refresh(true).then(function () { S.tab = 'mine'; render(); openTask(deep); }); }, 300);
 
   window.E10K = {
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
-    shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me,
+    shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me, idb: idb, mach: mach,
+    options: options, to12: to12, nowHM: nowHM, sinceTxt: sinceTxt, flush: flush, syncBadge: syncBadge,
     addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
-    if (TOKEN) { if (S.queue.length) flush(); else refresh(!!S.data); }
+    loadQueue().then(function () { syncBadge(); if (TOKEN) { if (S.queue.length) flush(); else refresh(!!S.data); } });
   });
   setInterval(function () { if (!document.hidden) refresh(true); }, 120000);
 })();

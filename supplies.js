@@ -419,7 +419,12 @@
   // ---------- wiring ----------
   A.addTab({k: 'supplies', n: 'Supplies', ic: A.svg('<path d="M3 4h2l2.4 11h11.2L21 7H6.2M9 20a1 1 0 1 0 0-.01M18 20a1 1 0 1 0 0-.01"/>'),
     render: function () { render(); },
-    badge: function () { return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() + rcLook() : 0) : ((A.S.data && A.S.data.supplyCount) || 0) + ((A.S.data && A.S.data.shopCheck) || 0); },
+    // off the tab the count comes from bootstrap (no extra polling); on the tab, from the lists just loaded
+    badge: function () {
+      var d = A.S.data || {};
+      if (A.S.tab !== 'supplies' && d.supplyCount !== undefined) return (d.supplyCount || 0) + (A.me().owner ? (d.shopCheck || 0) + (d.rcLook || 0) : 0);
+      return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() + rcLook() : 0) : (d.supplyCount || 0) + (d.shopCheck || 0);
+    },
     fab: function () { return view() === 'shop' ? shopForm() : view() === 'receipts' ? receiptForm() : buyForm(); }});
 
   document.addEventListener('click', function (e) {
@@ -431,7 +436,6 @@
     var rc = e.target.closest('[data-rc]'); if (rc) { var z = findRc(rc.getAttribute('data-rc')); if (z) return receiptDetail(z); }
     var mo = e.target.closest('[data-rcmonth]'); if (mo) { RC.month = mo.getAttribute('data-rcmonth'); return render(true); }
   });
-  // keep the tab badge fresh even when the tab isn't open
-  setTimeout(function () { if (navigator.onLine && A.S.data) load(); }, 4000);
-  setInterval(function () { if (!document.hidden && navigator.onLine && A.S.data) load(); }, 180000);
+  // the lists refresh only while the Supplies tab is open (the badge elsewhere uses bootstrap's counts)
+  setInterval(function () { if (!document.hidden && navigator.onLine && A.S.data && A.S.tab === 'supplies') load(); }, 180000);
 })();

@@ -39,7 +39,7 @@
 
   function render(noFetch) {
     if (EQ.open) return renderMachine(EQ.open, noFetch);
-    var html = '<h2>Equipment</h2>';
+    var html = '<h2>Equipment</h2>' + (A.mlogBanner ? A.mlogBanner('equip') : '');
     if (!EQ.list) html += '<div class="empty">Loading\u2026</div>';
     else {
       var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3}, fr = {DOWN: 0, Problem: 1, Watch: 2};
@@ -47,7 +47,9 @@
         var fa = fr[a.status] === undefined ? 3 : fr[a.status], fb = fr[b.status] === undefined ? 3 : fr[b.status];
         return fa - fb || rank[a.state] - rank[b.state] || a.key.localeCompare(b.key);
       }).forEach(function (m) {
-        html += '<div class="card tap' + flagCls(m) + '" data-machine="' + esc(m.key) + '"><div class="row"><div class="grow">' +
+        var run = A.mlogOpenFor ? A.mlogOpenFor(m.key) : null;
+        html += '<div class="card tap' + flagCls(m) + (run ? ' running' : '') + '" data-machine="' + esc(m.key) + '"><div class="row"><div class="grow">' +
+          (run ? '<div class="sub" style="color:var(--green);font-weight:700">\ud83d\udfe2 Running \u00b7 ' + esc(run.operator || '') + ' \u00b7 ' + esc(run.job || '') + '</div>' : '') +
           '<div class="title">' + (FL(m.status) ? '<span class="ficon">' + FL(m.status).ic + '</span>' : '') + esc(m.model) + '</div><div class="sub">' + (m.hours !== null && m.hours !== undefined ? fmtH(m.hours) + ' hrs' +
           (m.hoursAsOf ? ' \u00b7 as of ' + esc(m.hoursAsOf) : '') : '') + '</div>' +
           (FL(m.status) ? '<div class="sub" style="color:' + FL(m.status).color + ';font-weight:600">' + esc(FL(m.status).label) + ': ' + esc(lastNote(m.statusNote)) + '</div>' : '') +
@@ -105,6 +107,13 @@
       (m.engine ? '<div class="kv">Engine <b>' + esc(m.engine) + '</b>' + (m.engineSn ? ' \u00b7 S/N ' + esc(m.engineSn) : '') + '</div>' : '') +
       (m.built ? '<div class="kv">Built <b>' + esc(m.built) + '</b></div>' : '') +
       (m.specs ? '<div class="kv">' + esc(m.specs) + '</div>' : '') +
+      (function () {
+        var run = A.mlogOpenFor ? A.mlogOpenFor(m.key) : null;
+        if (run) return '<div class="card running"><div class="title">\ud83d\udfe2 Running \u2013 ' + esc(run.job) + '</div><div class="sub">' + esc(run.operator || '') +
+          (run.meterStart ? ' \u00b7 from ' + esc(fmtH(run.meterStart)) : '') + ' \u00b7 started by ' + esc(run.startedBy || '') + '</div>' +
+          '<button class="btn ok" data-ml="close" data-id="' + esc(run.id) + '" style="width:100%;margin-top:8px">Close out machine hours</button></div>';
+        return '<button class="btn" data-ml="start" data-mach="' + esc(m.key) + '" style="width:100%;margin:6px 0">\u2699 Start machine hours</button>';
+      })() +
       '<div class="btns"><button class="btn primary" data-eq="hours">Update hours</button><button class="btn" data-eq="check">Pre-start check</button></div>' +
       '<div class="btns"><button class="btn ok" data-eq="log">Log service / repair</button><button class="btn" data-eq="problem">Report problem</button></div>';
     html += '<h3>Service schedule</h3>';
