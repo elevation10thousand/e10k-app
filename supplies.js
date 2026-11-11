@@ -384,6 +384,7 @@
       '<div><label>Billing</label><select id="rd-bill">' + RC.billing.map(function (c) { return '<option' + (c === (x.billing || 'Contract') ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div></div>' +
       '<label>Note</label><input id="rd-note">' +
       '<div class="btns"><button class="btn" data-act="reread">Sam read it wrong</button><button class="btn" data-act="delete" style="color:var(--red)">\ud83d\uddd1 Delete</button></div>' +
+      (x.status === 'Needs a look' && !x.costId ? '<div class="btns"><button class="btn ok" data-act="approve">\u2705 Looks right \u2013 log it</button></div>' : '') +
       '<div class="btns"><button class="btn" data-act="x">Close</button><button class="btn primary" data-act="save">Save</button></div>';
     else html += '<div class="btns">' + (x.by === m.name && x.status === 'Reading' ? '<button class="btn" data-act="delete" style="color:var(--red)">\ud83d\uddd1 Delete</button>' : '') + '<button class="btn" data-act="x">Close</button></div>';
     A.sheet(html, function (act) {
@@ -400,10 +401,12 @@
       if (act === 'reread') { if (!f.note) { $('#rd-note').focus(); return toast('Say what\u2019s wrong so Sam can fix it'); } f.reread = true; x.status = 'Reading'; x.costId = ''; }
       else { f.job = $('#rd-job').value; f.total = $('#rd-total').value.trim(); f.vendor = $('#rd-vendor').value.trim(); f.date = $('#rd-date').value.trim();
         f.category = $('#rd-cat').value; f.billing = $('#rd-bill').value;
+        if (act === 'approve') { if (!f.total) { $('#rd-total').focus(); return toast('Enter the total first'); } f.approve = true; }
         Object.assign(x, {job: f.job, total: f.total, vendor: f.vendor, date: f.date, category: f.category, billing: f.billing}); if (x.status === 'Needs a look' && x.costId) x.status = 'Logged'; }
       A.api('receipt.update', {fields: f}).then(function (r) {
-        if (!r.ok) return toast(r.error === 'already_billed' ? 'Already billed to the client \u2013 fix it on the invoice' : 'Didn\u2019t save \u2013 try again');
-        ls.set('receipts', RC.items); A.closeSheet(); render(true); toast(f.reread ? 'Sent back to Sam' : 'Saved \u2013 job cost updated');
+        if (!r.ok) return toast(r.error === 'already_billed' ? 'Already billed to the client \u2013 fix it on the invoice' : r.error === 'total_needed' ? 'Enter the total first' : 'Didn\u2019t save \u2013 try again');
+        if (f.approve) { x.status = 'Logged'; x.costId = r.costId || x.costId; }
+        ls.set('receipts', RC.items); A.closeSheet(); render(true); toast(f.reread ? 'Sent back to Sam' : f.approve ? 'Approved \u2013 logged to ' + f.job : 'Saved \u2013 job cost updated');
       }).catch(function () { toast('Needs a signal'); });
     });
     if (navigator.onLine) A.api('receipt.get', {id: x.id}).then(function (r) {

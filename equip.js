@@ -132,7 +132,8 @@
       })() +
       '<div class="btns"><button class="btn primary" data-eq="hours">Update hours</button><button class="btn" data-eq="check">Pre-start check</button></div>' +
       '<div class="btns"><button class="btn ok" data-eq="log">Log service / repair</button><button class="btn" data-eq="problem">Report problem</button></div>' +
-      (A.fuelUp ? '<div class="btns"><button class="btn" data-eq="fuel">\u26fd Fuel up</button></div>' : '');
+      '<div class="btns">' + (A.fuelUp ? '<button class="btn" data-eq="fuel">\u26fd Fuel up</button>' : '') +
+        (A.openAsk ? '<button class="btn" data-eq="ask">\ud83e\udd16 Ask Sam about this machine</button>' : '') + '</div>';
     html += '<h3>Service schedule</h3>';
     if (!m.schedule.length) html += '<div class="empty" style="padding:14px">No schedule on file. Tell Sam the intervals.</div>';
     m.schedule.forEach(function (d) {
@@ -437,6 +438,7 @@
     if (act === 'problem') return problemForm(m);
     if (act === 'log') return logForm(m);
     if (act === 'fuel') return A.fuelUp(m.key);
+    if (act === 'ask') return A.openAsk({person: A.me().name, machine: m.key});
     if (act === 'issues') return issuesForm(m);
     if (act === 'service') return serviceForm(m);
     if (act === 'level') return levelForm(m);

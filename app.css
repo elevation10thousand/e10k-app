@@ -107,7 +107,8 @@ nav#tabs button { font-size: 10.5px; }
 .hbtn svg { width: 24px; height: 24px; }
 .hleft { position: absolute; left: 6px; top: calc(var(--safe-t) + 8px); }
 .hright { position: absolute; right: 6px; top: calc(var(--safe-t) + 8px); }
-.sync { right: 54px; }
+.sync { right: 98px; }
+.hright2 { position: absolute; right: 50px; top: calc(var(--safe-t) + 8px); }   /* Ask Sam, next to messages */
 .wx span { font-size: 15px; }
 .cbadge { display: none; position: absolute; top: 2px; right: 2px; background: var(--red); color: #fff; font: 700 11px var(--sans); border-radius: 9px; min-width: 18px; height: 18px; line-height: 18px; text-align: center; padding: 0 4px; }
 .chat { position: fixed; inset: 0; background: #000; z-index: 60; display: flex; flex-direction: column; padding-top: var(--safe-t); }
@@ -208,3 +209,10 @@ nav#tabs button { font-size: 10.5px; }
 .mic-btn.on { background: var(--red); border-color: var(--red); color: #fff; animation: micpulse 1.2s infinite; }
 @keyframes micpulse { 50% { opacity: .65; } }
 .mic-wrap-chat { flex: 1; } .mic-wrap-chat textarea { width: 100%; }
+
+/* Ask Sam (11/11) */
+.cmsg.ask-sam { background: #1f2a3a; }
+.ask-tag { font-size: 12px; color: var(--dim); margin-bottom: 2px; }
+.ask-mtag { padding: 4px 12px 0; font-size: 13px; color: var(--dim); }
+.ask-mtag button { background: none; border: 0; color: var(--dim); font-size: 14px; cursor: pointer; }
+.ask-typing { color: var(--dim); font-style: italic; }
