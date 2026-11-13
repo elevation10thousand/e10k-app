@@ -65,7 +65,7 @@
   // ---------- shared bits ----------
   function seg() {
     var v = view();
-    return '<div class="tl-seg">' + [['inv', 'Invoices'], ['bills', 'Bills'], ['money', 'Money']].map(function (x) {
+    return '<div class="tl-seg">' + [['inv', 'Invoices'], ['jobs', 'Jobs'], ['bills', 'Bills'], ['money', 'Money']].map(function (x) {
       return '<button class="' + (v === x[0] ? 'on' : '') + '" data-finview="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
   }
   function box(key, title, count, rows, opt) {
@@ -100,11 +100,13 @@
   // ---------- tab ----------
   function render(noFetch) {
     if (!owner()) { $('#view').innerHTML = '<div class="empty">Finance is for Spencer and Hanna.</div>'; return; }
+    if (F.open && /^JOB:/.test(F.open)) return A.renderJob ? A.renderJob(F.open.slice(4)) : null;
     if (F.open) return renderInv(noFetch);
     var v = view(), html = seg();
     if (!F.d) html += '<div class="empty">Loading\u2026</div>';
     else if (v === 'bills') html += billsHtml();
     else if (v === 'money') html += moneyHtml();
+    else if (v === 'jobs') html += jobsHtml();
     else html += invHtml();
     $('#view').innerHTML = html;
     badge();
@@ -130,6 +132,29 @@
     if (!inv.length && !jobs.length) html += '<div class="empty">No invoices yet. Tap + to start one.</div>';
     html += '<div class="tl-hint">Tap + to start an invoice for a job or a one-off customer.</div>';
     return html;
+  }
+
+  // ---------- jobs (each opens its money page, jobfin.js) ----------
+  function jobsHtml() {
+    var d = F.d, jobs = (d.jobs || []).slice(), html = '';
+    var act = function (j) { return !/complete|closed|lost|cancel/i.test(j.status || ''); };
+    var line = function (j) {
+      var bits = [j.type || '', j.budget ? Math.round(100 * (j.cost || 0) / j.budget) + '% of budget' : '', j.pctDone !== null && j.pctDone !== undefined ? j.pctDone + '% done' : '',
+        j.ready ? j.ready + ' to bill' : ''].filter(Boolean);
+      var over = j.budget && j.cost > j.budget, warn = j.budget && j.pctDone !== null && j.pctDone !== undefined && (100 * j.cost / j.budget) - j.pctDone > 15;
+      return row('data-finjob="' + esc(j.job) + '"', esc(j.job), (over ? '<span style="color:var(--red)">over budget</span> \u00b7 ' : (warn ? '<span style="color:var(--orange)">spending ahead of progress</span> \u00b7 ' : '')) +
+        esc(bits.join(' \u00b7 ') || (j.status || '')), money(j.cost || 0, false), j.budget ? 'of ' + money(j.budget, false) : 'spent');
+    };
+    var a = jobs.filter(act), done = jobs.filter(function (j) { return !act(j); });
+    a.sort(function (x, y) { return (y.cost || 0) - (x.cost || 0); });
+    html += box('ja', 'Jobs', a.length, a.map(line), {limit: 30, sub: 'Tap a job to see what it cost, what we made, its budget and checklist.'});
+    if (done.length) html += box('jd', 'Finished jobs', done.length, done.map(line), {collapsed: true, limit: 40});
+    return html;
+  }
+  function openJob(job) {
+    F.open = 'JOB:' + job;
+    if (A.S.tab !== 'fin') { A.S.tab = 'fin'; ls.set('tab', 'fin'); }
+    A.navPush(); window.scrollTo(0, 0); A.render();
   }
 
   // ---------- one invoice ----------
@@ -458,13 +483,13 @@
       paidForm(p.items.map(function (x) { return x.id; }), 'Paid ' + person + ' back ' + money(p.total));
     });
   }
-  function billForm() {
+  function billForm(preJob) {
     var L = F.d.lists || {}, jobs = [];
     // open jobs + Shop / Office from the app, plus every billing job (finished ones too: bills often come in late)
     (A.S.data && A.S.data.jobs || []).map(function (j) { return j.name; }).concat((F.d.jobs || []).map(function (j) { return j.job; }))
       .forEach(function (n) { if (n && jobs.indexOf(n) < 0) jobs.push(n); });
     var file = null;
-    A.sheet('<h2>Add a bill</h2><label>Job</label><select id="fb-j">' + A.options(jobs, '', true) + '</select>' +
+    A.sheet('<h2>Add a bill</h2><label>Job</label><select id="fb-j">' + A.options(jobs, preJob || '', true) + '</select>' +
       '<label>Vendor</label><input id="fb-v" placeholder="Ann\u2019s Trucking"><label>What it\u2019s for</label><input id="fb-d" placeholder="Fines haul for driveway">' +
       '<div style="display:flex;gap:8px"><div style="flex:1"><label>Amount</label><input id="fb-a" inputmode="decimal"></div><div style="flex:1"><label>Bill date</label><input type="date" id="fb-dt" value="' + A.usToIso(A.todayStr()) + '"></div></div>' +
       '<label>Vendor invoice #</label><input id="fb-n">' +
@@ -483,7 +508,7 @@
       if (!f.job) return toast('Pick the job'); if (!f.vendor) return toast('Type the vendor'); if (!f.amount) return toast('Type the amount');
       if (file) f.file = file;
       A.closeSheet(); toast('Saving\u2026');
-      call('fin.billAdd', {fields: f}).then(function () { toast('Bill saved \u2713'); load(); });
+      call('fin.billAdd', {fields: f}).then(function () { toast('Bill saved \u2713'); load(); if (A.reloadJob && F.open && /^JOB:/.test(F.open)) A.reloadJob(); });
     });
     document.querySelector('#sheet .chips').onclick = function (e) {
       var b = e.target.closest('[data-fbp]'); if (!b) return; e.stopPropagation();
@@ -550,6 +575,7 @@
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'fin' || e.target.closest('#sheet')) return;
     var t;
+    if ((t = e.target.closest('[data-finjob]'))) return openJob(t.getAttribute('data-finjob'));
     if ((t = e.target.closest('[data-finview]'))) { ls.set('finView', t.getAttribute('data-finview')); F.open = null; window.scrollTo(0, 0); return render(true); }
     if ((t = e.target.closest('[data-finbox]'))) { var k = t.getAttribute('data-finbox'); F.box[k] = !F.box[k]; return F.open ? renderInv() : render(true); }
     if ((t = e.target.closest('[data-finv]'))) return openInv(t.getAttribute('data-finv'));
@@ -583,10 +609,12 @@
   A.addTab({k: 'fin', n: 'Finance', show: owner, badge: badgeCount,
     ic: A.svg('<path d="M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5S7 4.6 7 6.5 9.2 9.6 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/>'),
     render: function () { render(); },
-    fab: function () { if (F.open) return F.cur && ['Draft', 'Waiting on Spencer', 'Approved'].indexOf(F.cur.invoice.status) >= 0 ? lineForm(null) : null; if (view() === 'bills') return billForm(); return newInvoice(''); }});
+    fab: function () { if (F.open && /^JOB:/.test(F.open)) return billForm(F.open.slice(4)); if (F.open) return F.cur && ['Draft', 'Waiting on Spencer', 'Approved'].indexOf(F.cur.invoice.status) >= 0 ? lineForm(null) : null; if (view() === 'bills') return billForm(); return newInvoice(''); }});
   A.openInvoice = function (no) { if (!owner()) return; openInv(no); };
+  A.openJob = function (job) { if (owner()) openJob(job); };
+  A.finReload = function () { return load(); };
   A.curInv = function () { return A.S.tab === 'fin' ? F.open : null; };
-  A.setInv = function (no) { if (F.open !== (no || null)) { F.open = no || null; if (no && (!F.cur || F.cur.invoice.no !== no)) call('fin.get', {no: no}).then(function (r) { F.cur = r; if (F.open === no) renderInv(); }); } };
+  A.setInv = function (no) { if (F.open !== (no || null)) { F.open = no || null; if (no && /^JOB:/.test(no)) return; if (no && (!F.cur || F.cur.invoice.no !== no)) call('fin.get', {no: no}).then(function (r) { F.cur = r; if (F.open === no) renderInv(); }); } };
   setTimeout(function () { if (owner()) load(); }, 3000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && owner() && A.S.tab === 'fin' && !F.open) load(); });
 })();

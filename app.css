@@ -240,3 +240,7 @@ nav#tabs button { font-size: 10.5px; }
 .fn-mr span { width: 62px; flex: none; } .fn-mr b { width: 72px; text-align: right; color: var(--text); font-weight: 600; flex: none; }
 .fn-bar1 { flex: 1; height: 8px; background: #222; border-radius: 4px; overflow: hidden; } .fn-bar1 div { height: 100%; border-radius: 4px; }
 .kv a { color: var(--blue); }
+
+/* job money page (jobfin.js) */
+.fn-brow { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid #222; }
+.fn-brow .jb-in { width: 110px; flex: none; text-align: right; margin: 0; }

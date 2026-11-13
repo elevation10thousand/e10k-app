@@ -995,6 +995,7 @@
       (m.owner && !pre ? '<label>Who</label><select id="h-person">' + options(S.data.people, m.name) + '</select>' : '') +
       '<label>Date</label><input type="date" id="h-date" value="' + usToIso(pre ? pre.date : todayStr()) + '"' + (pre ? ' disabled' : '') + '>' +
       '<label>Job</label><select id="h-job">' + options(jobs, pre ? pre.job : ls.get('lastJob', ''), true) + '</select>' +
+      '<div id="h-catw"></div>' +
       '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="' + (pre ? pre.start : '07:00') + '"></div>' +
       '<div><label>End</label><input type="time" id="h-end" value="' + (pre ? pre.end : '') + '"></div></div>' +
       '<label>Machines used <span class="sub">(skip if none)</span></label><div id="h-mlist"></div>' +
@@ -1012,6 +1013,8 @@
         work: $('#h-work').value.trim(), machines: []};
       if (m.owner) f.person = $('#h-person').value;
       if (!f.job) return toast('Pick the job');
+      var ce = $('#h-cat');
+      if (ce) { if (!ce.value) { ce.focus(); return toast('Pick what part of the job you worked on'); } f.category = ce.value; ls.set('lastCat:' + f.job, ce.value); }
       if (!f.start || !f.end) return toast('Fill in start and end time');
       var lines = Array.prototype.slice.call(document.querySelectorAll('#h-mlist .mline'));
       for (var i = 0; i < lines.length; i++) {
@@ -1063,6 +1066,13 @@
       enqueue('time.create', {fields: f});
       save(); closeSheet(); render(); toast('Hours logged' + (stillOn.length ? '. Still running: ' + stillOn.join(', ') : ''));
     });
+    function drawCat() {
+      var jn = $('#h-job').value, j = S.data.jobs.filter(function (x) { return x.name === jn; })[0], w = $('#h-catw');
+      if (!w) return;
+      var cats = j && j.cats;
+      w.innerHTML = cats && cats.length ? '<label>What part of the job?</label><select id="h-cat">' + options(cats, ls.get('lastCat:' + jn, ''), true) + '</select>' : '';
+    }
+    $('#h-job').addEventListener('change', drawCat); drawCat();
     $('#h-madd').onclick = function (e) { e.stopPropagation(); addLine(); };
     if (pre && pre.machines) pre.machines.forEach(function (x) {
       addLine(); var el = document.querySelector('#h-mlist .mline:last-child');
