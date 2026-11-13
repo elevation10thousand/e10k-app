@@ -111,7 +111,7 @@
   }
 
   // ---------- api ----------
-  var READS = {'bootstrap': 1, 'tasks': 1, 'time.list': 1, 'walk.list': 1, 'walk.get': 1, 'equip.list': 1, 'equip.history': 1, 'lead.list': 1,
+  var READS = {'fin.list': 1, 'fin.get': 1, 'fin.file': 1, 'bootstrap': 1, 'tasks': 1, 'time.list': 1, 'walk.list': 1, 'walk.get': 1, 'equip.list': 1, 'equip.history': 1, 'lead.list': 1,
     'supplies.list': 1, 'shop.list': 1, 'shop.get': 1, 'chat.list': 1, 'chat.photo': 1, 'receipt.list': 1, 'receipt.get': 1, 'mlog.list': 1, 'briefing.get': 1, 'ask.list': 1, 'ask.photo': 1};
   /** POST to the backend with a time limit (a hung request on 1 bar never blocks the app). Writes carry a request id
    *  (rid) so a resend after a lost answer is recognised by the server and never done twice. */
@@ -364,7 +364,7 @@
     t.push({k: 'all', ic: ICONS.list, n: me().owner ? 'All Open' : 'Job Tasks'});
     t.push({k: 'hours', ic: ICONS.clock, n: 'Hours'});
     t.push({k: 'walks', ic: ICONS.mtn, n: 'Walks'});
-    t.splice.apply(t, [3, 0].concat(EXTRA_TABS));
+    t.splice.apply(t, [3, 0].concat(EXTRA_TABS.filter(function (x) { return !x.show || x.show(); })));
     return t;
   }
 
@@ -745,6 +745,7 @@
 
   function openTask(id) {
     if (id === 'CHAT') { if (window.E10K.openChat) window.E10K.openChat(); return; }
+    if (/^INVOICE-/.test(id)) { if (window.E10K.openInvoice) window.E10K.openInvoice(id.slice(8)); return; }
     if (/^ASKSAM/.test(id)) { if (window.E10K.openAsk) window.E10K.openAsk({person: id.slice(7) || me().name}); return; }
     if (id === 'BRIEFING' || id === 'briefing') return openBriefing();
     var t = findTask(id); if (!t) return;
@@ -1249,7 +1250,8 @@
   // Each screen change made by a tap adds a history entry, so Android's back button steps back
   // (closes a pop-up, leaves a machine page, returns to the previous tab) instead of leaving the app.
   var sheetEntry = false, skipPop = 0;
-  function navState() { return {e10k: 1, tab: S.tab, machine: window.E10K && window.E10K.curMachine ? window.E10K.curMachine() : null}; }
+  function navState() { return {e10k: 1, tab: S.tab, machine: window.E10K && window.E10K.curMachine ? window.E10K.curMachine() : null,
+    inv: window.E10K && window.E10K.curInv ? window.E10K.curInv() : null}; }
   function navPush() { try { history.pushState(navState(), ''); } catch (e) {} }
   try { history.replaceState(navState(), ''); } catch (e) {}
   window.addEventListener('popstate', function (e) {
@@ -1261,6 +1263,7 @@
     var changed = st.tab && st.tab !== S.tab;
     if (st.tab) { S.tab = st.tab; ls.set('tab', S.tab); }
     if (window.E10K && window.E10K.setMachine) window.E10K.setMachine(st.machine || null);
+    if (window.E10K && window.E10K.setInv) window.E10K.setInv(st.inv || null);
     window.scrollTo(0, 0);
     if (changed) { S.chip = 'All'; S.filter = ''; }
     render();
@@ -1290,6 +1293,7 @@
       var nt = b.getAttribute('data-tab'), same = nt === S.tab;
       S.tab = nt; ls.set('tab', S.tab); S.chip = 'All'; S.filter = ''; window.scrollTo(0, 0);
       if (window.E10K.setMachine) window.E10K.setMachine(null);
+      if (window.E10K.setInv) window.E10K.setInv(null);
       if (!same) navPush(); else try { history.replaceState(navState(), ''); } catch (e) {}
       return render();
     }
