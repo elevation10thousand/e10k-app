@@ -459,7 +459,10 @@
     });
   }
   function billForm() {
-    var L = F.d.lists || {}, jobs = (A.S.data && A.S.data.jobs || []).map(function (j) { return j.name || j.job || j; });
+    var L = F.d.lists || {}, jobs = [];
+    // open jobs + Shop / Office from the app, plus every billing job (finished ones too: bills often come in late)
+    (A.S.data && A.S.data.jobs || []).map(function (j) { return j.name; }).concat((F.d.jobs || []).map(function (j) { return j.job; }))
+      .forEach(function (n) { if (n && jobs.indexOf(n) < 0) jobs.push(n); });
     var file = null;
     A.sheet('<h2>Add a bill</h2><label>Job</label><select id="fb-j">' + A.options(jobs, '', true) + '</select>' +
       '<label>Vendor</label><input id="fb-v" placeholder="Ann\u2019s Trucking"><label>What it\u2019s for</label><input id="fb-d" placeholder="Fines haul for driveway">' +
