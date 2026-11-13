@@ -55,7 +55,8 @@
       '<input type="date" id="fu-date" style="display:none;margin-top:8px">' +
       '<div id="fu-nextbox" style="display:none"><label>Next step</label><input id="fu-next"></div>' +
       '<div class="sub" id="fu-sum" style="margin-top:10px"></div>' +
-      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save">Done</button></div>';
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save">Done</button></div>' +
+      '<button class="btn" data-act="nofu" style="width:100%;margin-top:8px">\u2713 Done \u2013 no follow-up</button>';
 
     A.sheet(html, function (act) {
       if (act === 'mail') {
@@ -64,6 +65,7 @@
           prompt(t, sent ? {how: 'Email', outcome: 'Emailed: ' + sent.subject} : {});
         });
       }
+      if (act === 'nofu') { st.when = 'none'; act = 'save'; }
       if (act !== 'save') return A.closeSheet();
       var when = '';
       if (st.when === 'pick') { var v = $('#fu-date').value; if (!v) return A.toast('Pick the follow-up date'); var p = v.split('-'); when = p[1] + '/' + p[2] + '/' + p[0]; }
