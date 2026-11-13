@@ -7,38 +7,61 @@
   if (!SR) return;   // browser can't do it: no button
   var active = null;   // {rec, btn, el}
 
-  function stop() { if (active) { try { active.rec.stop(); } catch (e) {} } }
+  // Stop right away on screen (Samsung/Android can take a long time to end, or never fire onend), then make sure the
+  // phone really lets go of the mic.
+  function done(a) {
+    if (!a) return;
+    a.btn.classList.remove('on'); a.btn.innerHTML = '\ud83c\udfa4';
+    if (active === a) active = null;
+  }
+  function stop() {
+    var a = active; if (!a) return;
+    a.stopping = true; done(a);
+    try { a.rec.stop(); } catch (e) {}
+    setTimeout(function () { try { a.rec.abort(); } catch (e) {} delete a.btn.dataset.busy; }, 1200);
+  }
 
   function start(el, btn) {
     if (active && active.el === el) return stop();
     stop();
+    if (btn.dataset.busy) return;   // a double tap while the last one is still closing
     var rec = new SR();
     rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true;
-    var base = el.value, finalTxt = '';
+    var base = el.value, me = null;
     function join(a, b) { return a && b && !/\s$/.test(a) ? a + ' ' + b : a + b; }
+    // Rebuild from every result each time. Android Chrome / Samsung repeat earlier words inside later results in
+    // continuous mode, so a piece that already contains what we have replaces it instead of being added again.
+    function addFinal(acc, t) {
+      var a = acc.toLowerCase(), b = t.toLowerCase();
+      if (!a) return t;
+      if (b.indexOf(a) === 0) return t;
+      if (a.slice(-b.length) === b) return acc;
+      return join(acc, t);
+    }
     rec.onresult = function (e) {
-      var interim = '';
-      for (var i = e.resultIndex; i < e.results.length; i++) {
-        var t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalTxt = join(finalTxt, t.trim()); else interim = join(interim, t.trim());
+      var interim = '', finalTxt = '';
+      for (var i = 0; i < e.results.length; i++) {
+        var t = String(e.results[i][0].transcript || '').trim(); if (!t) continue;
+        if (e.results[i].isFinal) finalTxt = addFinal(finalTxt, t); else interim = join(interim, t);
       }
+      if (interim && finalTxt && interim.toLowerCase().indexOf(finalTxt.toLowerCase()) === 0) interim = interim.slice(finalTxt.length).trim();
       var said = join(finalTxt, interim);
-      if (said) said = said.charAt(0).toUpperCase() + said.slice(1);
+      if (said && (!base.trim() || /[.!?]\s*$/.test(base))) said = said.charAt(0).toUpperCase() + said.slice(1);
       el.value = join(base, said);
       el.dispatchEvent(new Event('input', {bubbles: true}));
     };
     rec.onerror = function (e) {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow the microphone for this app to talk-to-type');
       else if (e.error === 'no-speech') toast('Didn\u2019t hear anything \u2013 tap \ud83c\udfa4 and try again');
-      else if (e.error !== 'aborted') toast('Mic stopped (' + e.error + ')');
+      else if (e.error !== 'aborted' && !(me && me.stopping)) toast('Mic stopped (' + e.error + ')');
     };
     rec.onend = function () {
-      btn.classList.remove('on'); btn.innerHTML = '\ud83c\udfa4';
-      if (active && active.rec === rec) active = null;
+      delete btn.dataset.busy;
+      if (active && active.rec === rec) done(active);
       el.dispatchEvent(new Event('change', {bubbles: true}));
     };
     try { rec.start(); } catch (e) { return toast('Mic not available right now'); }
-    active = {rec: rec, btn: btn, el: el};
+    active = me = {rec: rec, btn: btn, el: el}; btn.dataset.busy = '1';
     btn.classList.add('on'); btn.innerHTML = '\u25cf Stop';
     if (navigator.vibrate) navigator.vibrate(30);
   }

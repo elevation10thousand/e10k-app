@@ -1230,19 +1230,18 @@
     var jobs = S.data.jobs.map(function (j) { return j.name; }), photos = [];
     var html = '<h2>New walkthrough</h2>' +
       '<label>Job</label><select id="w-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
-      '<label>What you saw</label><textarea id="w-sum" placeholder="Type, or tap 🎤 and just talk"></textarea>' +
-      '<label>What needs done</label><textarea id="w-act" placeholder="One item per line"></textarea>' +
+      '<label>Tell me about it</label><textarea id="w-sum" rows="7" placeholder="Tap 🎤 and just talk: what you saw and what needs done. Sam pulls out the to-do list and makes the tasks."></textarea>' +
       '<label>Photos</label><input type="file" id="w-ph" accept="image/*" multiple><div class="photos" id="w-prev"></div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
     sheet(html, function (act) {
       if (act !== 'save') return closeSheet();
-      var f = {job: $('#w-job').value, summary: $('#w-sum').value.trim(), actions: $('#w-act').value.trim(), photos: photos, clientId: uid()};
+      var f = {job: $('#w-job').value, summary: $('#w-sum').value.trim(), actions: '', photos: photos, clientId: uid()};
       if (!f.job) return toast('Pick the job');
       if (!f.summary && !f.actions && !photos.length) return toast('Add notes or photos');
       S.walks.unshift({job: f.job, date: todayStr(), by: me().name, summary: f.summary, photos: photos.length, pending: true});
       enqueue('walk.create', {fields: f});
       ls.set('lastJob', f.job);
-      save(); closeSheet(); render(); toast('Walkthrough saved');
+      save(); closeSheet(); render(); toast('Walkthrough saved \u2013 Sam will turn it into tasks');
     });
     $('#w-ph').onchange = function (e) {
       Array.prototype.forEach.call(e.target.files, function (file) {
