@@ -1254,6 +1254,49 @@
     };
   }
 
+  // ---------- + Add a new job (owners, and crew Spencer allows: People "Can Add Jobs") ----------
+  function newJobHook() {
+    if (!me().canAddJobs) return;
+    ['ci-job', 'h-job', 'w-job', 'f-job'].forEach(function (id) {
+      var sel = document.getElementById(id);
+      if (!sel || sel.tagName !== 'SELECT' || sel.dataset.nj) return;
+      sel.dataset.nj = '1';
+      var o = document.createElement('option'); o.value = '__newjob'; o.textContent = '+ Add a new job\u2026'; sel.appendChild(o);
+      var prev = sel.value === '__newjob' ? '' : sel.value;
+      sel.addEventListener('change', function (e) {
+        if (sel.value !== '__newjob') { prev = sel.value; return; }
+        e.stopImmediatePropagation(); sel.value = prev; box(sel);
+      }, true);
+    });
+  }
+  function box(sel) {
+    if (sel.parentNode.querySelector('.nj-box')) return;
+    var d = document.createElement('div'); d.className = 'nj-box';
+    d.style.cssText = 'border:1px solid #2a3a55;border-radius:10px;padding:4px 10px 10px;margin:8px 0;background:#0d1420';
+    d.innerHTML = '<label>New job name</label><input class="nj-n" placeholder="e.g. Jeff Weiner">' +
+      '<label>Client <span class="sub">(optional)</span></label><input class="nj-c"><label>Address <span class="sub">(optional)</span></label><input class="nj-a">' +
+      '<div class="btns"><button type="button" class="btn nj-x">Cancel</button><button type="button" class="btn primary nj-go">Add job</button></div>';
+    sel.insertAdjacentElement('afterend', d);
+    d.querySelector('.nj-n').focus();
+    d.querySelector('.nj-x').onclick = function (e) { e.stopPropagation(); d.remove(); };
+    d.querySelector('.nj-go').onclick = function (e) {
+      e.stopPropagation();
+      var f = {name: d.querySelector('.nj-n').value.trim(), client: d.querySelector('.nj-c').value.trim(), address: d.querySelector('.nj-a').value.trim()};
+      if (!f.name) return toast('Type the job name');
+      if (!navigator.onLine) return toast('Adding a job needs signal \u2013 try again when you have it');
+      var b = this; b.disabled = true; b.textContent = 'Adding\u2026';
+      api('job.create', {fields: f}).then(function (r) {
+        b.disabled = false; b.textContent = 'Add job';
+        if (!r.ok) return toast(r.error === 'job_exists' ? 'There\u2019s already a job called \u201c' + r.job + '\u201d' : (r.error === 'not_allowed' ? 'Ask Spencer to add the job' : 'Could not add it (' + r.error + ')'));
+        S.data.jobs.push(r.job); save();
+        var o = document.createElement('option'); o.value = o.textContent = r.job.name;
+        sel.insertBefore(o, sel.querySelector('option[value="__newjob"]'));
+        sel.value = r.job.name; sel.dispatchEvent(new Event('change', {bubbles: true}));
+        d.remove(); toast('Job \u201c' + r.job.name + '\u201d added \u2013 Spencer and Hanna get a heads-up');
+      }, function () { b.disabled = false; b.textContent = 'Add job'; toast('Could not reach the server \u2013 try again'); });
+    };
+  }
+
   // ---------- sheet ----------
   var sheetHandler = null;
   // ---------- phone back button ----------
@@ -1282,6 +1325,7 @@
   function sheet(html, onAct) {
     if ($('#sheet').classList.contains('hidden') && !sheetEntry) { sheetEntry = true; try { history.pushState(Object.assign(navState(), {sheet: 1}), ''); } catch (e) {} }
     $('#sheet-body').innerHTML = html; sheetHandler = onAct;
+    try { newJobHook(); } catch (e) {}
     $('#sheet').classList.remove('hidden'); document.body.style.overflow = 'hidden';
   }
   function hideSheet() { $('#sheet').classList.add('hidden'); document.body.style.overflow = ''; sheetHandler = null; }
