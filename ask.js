@@ -87,6 +87,7 @@
     draw(); poll(); badge();
     clearInterval(Q.timer); Q.timer = setInterval(poll, waiting() ? 5000 : 15000);
     if (opt.machine && mine()) setTimeout(function () { var t = document.getElementById('ask-text'); if (t) t.focus(); }, 100);
+    if (opt.text) setTimeout(function () { var t = document.getElementById('ask-text'); if (t) { t.value = opt.text; t.focus(); } }, 120);
   }
   function closeAsk(fromPop) {
     var panel = document.getElementById('ask-panel'); if (!panel || panel.classList.contains('hidden')) return;

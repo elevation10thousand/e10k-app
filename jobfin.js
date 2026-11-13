@@ -142,7 +142,8 @@
       var items = by[st], d = items.filter(function (c) { return c.done; }).length, open = JF.open[st] !== undefined ? JF.open[st] : (d < items.length && !JF.firstOpen && (JF.firstOpen = st));
       if (JF.open[st] === undefined && JF.firstOpen === st) open = true;
       html += '<div class="fn-r" data-jfstage="' + esc(st) + '" style="background:#151515"><div class="tl-x"><div class="fn-t"><b>' + esc(st) + '</b></div></div><div class="fn-amt" style="font-weight:400">' +
-        (d === items.length ? '<span style="color:var(--green)">\u2713 done</span>' : d + ' of ' + items.length) + ' ' + (open ? '\u25b4' : '\u203a') + '</div></div>';
+        (d === items.length ? '<span style="color:var(--green)">\u2713 done</span>' : d + ' of ' + items.length) + ' ' + (open ? '\u25b4' : '\u203a') +
+        '</div><span data-jfstagemenu="' + esc(st) + '" style="padding:2px 4px 2px 12px;font-size:18px;color:var(--dim)">\u22ef</span></div>';
       if (open) items.forEach(function (c) {
         html += '<div class="tl-r' + (c.done ? ' is-done' : '') + '"><span class="tl-ckw" data-jfck="' + esc(c.id) + '"><span class="tl-ck"></span></span>' +
           '<div class="tl-x" data-jfitem="' + esc(c.id) + '"><div class="tl-t">' + (c.kind === 'Inspection' ? '\ud83d\udd0e ' : '') + esc(c.item) + '</div><div class="tl-s">' +
@@ -271,17 +272,37 @@
       A.closeSheet(); call('job.check', f).then(set);
     });
   }
-  function addItemSheet() {
+  function stageSheet(st) {
+    var r = JF.cur, items = r.checklist.filter(function (c) { return c.stage === st; });
+    A.sheet('<h2>' + esc(st) + '</h2><div class="sub">' + items.length + ' item' + (items.length === 1 ? '' : 's') + ' on this job.</div>' +
+      '<label>Rename this stage</label><input id="js-rn" value="' + esc(st) + '">' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn" data-act="rm" style="color:var(--red)">Delete stage</button>' +
+      '<button class="btn" data-act="add">+ Item</button><button class="btn primary" data-act="go">Save</button></div>', function (a) {
+      if (a === 'add') return addItemSheet(st);
+      if (a === 'rm') {
+        if (!confirm('Delete \u201c' + st + '\u201d and its ' + items.length + ' item' + (items.length === 1 ? '' : 's') + ' from this job\u2019s checklist? (Other jobs keep theirs.)')) return;
+        A.closeSheet(); return call('job.check', {job: r.job.job, stage: st, removeStage: true}).then(function (x) { toast('Stage deleted'); set(x); });
+      }
+      if (a !== 'go') return A.closeSheet();
+      var nm = $('#js-rn').value.trim(); if (!nm || nm === st) return A.closeSheet();
+      if (JF.open[st] !== undefined) { JF.open[nm] = JF.open[st]; }
+      A.closeSheet(); call('job.check', {job: r.job.job, stage: st, renameStage: nm}).then(set);
+    });
+  }
+  function addItemSheet(pre) {
     var r = JF.cur, stages = []; r.checklist.forEach(function (c) { if (stages.indexOf(c.stage) < 0) stages.push(c.stage); });
     A.sheet('<h2>Add to the checklist</h2><label>Item</label><input id="ja-i" placeholder="e.g. Propane line pressure test">' +
-      '<label>Stage</label><select id="ja-s">' + A.options(stages.concat(['Other']), stages[stages.length - 1]) + '</select>' +
+      '<label>Stage</label><select id="ja-s">' + A.options(stages.concat(['+ New stage\u2026']), pre || stages[stages.length - 1]) + '</select>' +
+      '<input id="ja-ns" placeholder="New stage name" style="display:none">' +
       '<label class="fn-chk"><input type="checkbox" id="ja-k"> It\u2019s an inspection</label>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="go">Add</button></div>', function (a) {
       if (a !== 'go') return A.closeSheet();
       var f = {job: r.job.job, item: $('#ja-i').value.trim(), stage: $('#ja-s').value, kind: $('#ja-k').checked ? 'Inspection' : 'Step'};
+      if (/^\+ New stage/.test(f.stage)) { f.stage = $('#ja-ns').value.trim(); if (!f.stage) return toast('Name the new stage'); }
       if (!f.item) return toast('Type the item');
       A.closeSheet(); call('job.check', f).then(set);
     });
+    $('#ja-s').onchange = function () { $('#ja-ns').style.display = /^\+ New stage/.test($('#ja-s').value) ? '' : 'none'; };
   }
 
   // ---------- events ----------
@@ -299,9 +320,11 @@
       if (a === 'co') return coSheet(null);
       if (a === 'startck') return call('job.setup', {job: r.job.job, checklist: true}).then(function (x) { toast('Checklist started'); set(x); });
       if (a === 'ckadd') return addItemSheet();
+      if (a === 'ckreset') return call('job.setup', {job: r.job.job, checklist: true}).then(set);
     }
     if ((t = e.target.closest('[data-jfcat]'))) return catSheet(t.getAttribute('data-jfcat'));
     if ((t = e.target.closest('[data-jfco]'))) return coSheet(r.changeOrders.filter(function (c) { return c.id === t.getAttribute('data-jfco'); })[0]);
+    if ((t = e.target.closest('[data-jfstagemenu]'))) return stageSheet(t.getAttribute('data-jfstagemenu'));
     if ((t = e.target.closest('[data-jfstage]'))) { var st = t.getAttribute('data-jfstage'), cur = JF.open[st]; JF.open[st] = !(cur === undefined ? JF.firstOpen === st : cur); return draw(); }
     if ((t = e.target.closest('[data-jfck]'))) {
       var c = r.checklist.filter(function (x) { return x.id === t.getAttribute('data-jfck'); })[0]; if (!c) return;

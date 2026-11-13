@@ -65,7 +65,7 @@
   // ---------- shared bits ----------
   function seg() {
     var v = view();
-    return '<div class="tl-seg">' + [['inv', 'Invoices'], ['jobs', 'Jobs'], ['bills', 'Bills'], ['money', 'Money']].map(function (x) {
+    return '<div class="tl-seg">' + [['inv', 'Invoices'], ['jobs', 'Jobs'], ['bids', 'Bids'], ['bills', 'Bills'], ['money', 'Money']].map(function (x) {
       return '<button class="' + (v === x[0] ? 'on' : '') + '" data-finview="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
   }
   function box(key, title, count, rows, opt) {
@@ -101,12 +101,14 @@
   function render(noFetch) {
     if (!owner()) { $('#view').innerHTML = '<div class="empty">Finance is for Spencer and Hanna.</div>'; return; }
     if (F.open && /^JOB:/.test(F.open)) return A.renderJob ? A.renderJob(F.open.slice(4)) : null;
+    if (F.open && /^BID:/.test(F.open)) return A.renderBid ? A.renderBid(F.open.slice(4)) : null;
     if (F.open) return renderInv(noFetch);
     var v = view(), html = seg();
     if (!F.d) html += '<div class="empty">Loading\u2026</div>';
     else if (v === 'bills') html += billsHtml();
     else if (v === 'money') html += moneyHtml();
     else if (v === 'jobs') html += jobsHtml();
+    else if (v === 'bids') html += A.bidsHtml ? A.bidsHtml() : '';
     else html += invHtml();
     $('#view').innerHTML = html;
     badge();
@@ -609,12 +611,18 @@
   A.addTab({k: 'fin', n: 'Finance', show: owner, badge: badgeCount,
     ic: A.svg('<path d="M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5S7 4.6 7 6.5 9.2 9.6 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/>'),
     render: function () { render(); },
-    fab: function () { if (F.open && /^JOB:/.test(F.open)) return billForm(F.open.slice(4)); if (F.open) return F.cur && ['Draft', 'Waiting on Spencer', 'Approved'].indexOf(F.cur.invoice.status) >= 0 ? lineForm(null) : null; if (view() === 'bills') return billForm(); return newInvoice(''); }});
+    fab: function () { if (F.open && /^JOB:/.test(F.open)) return billForm(F.open.slice(4)); if (F.open && /^BID:/.test(F.open)) return A.bidLineFab(); if (!F.open && view() === 'bids') return A.bidFab(); if (F.open) return F.cur && ['Draft', 'Waiting on Spencer', 'Approved'].indexOf(F.cur.invoice.status) >= 0 ? lineForm(null) : null; if (view() === 'bills') return billForm(); return newInvoice(''); }});
   A.openInvoice = function (no) { if (!owner()) return; openInv(no); };
+  A.openBidRoute = function (no) {
+    F.open = 'BID:' + no;
+    if (A.S.tab !== 'fin') { A.S.tab = 'fin'; ls.set('tab', 'fin'); }
+    A.navPush(); window.scrollTo(0, 0); A.render();
+  };
+  A.loadPdfLib = loadLib;
   A.openJob = function (job) { if (owner()) openJob(job); };
   A.finReload = function () { return load(); };
   A.curInv = function () { return A.S.tab === 'fin' ? F.open : null; };
-  A.setInv = function (no) { if (F.open !== (no || null)) { F.open = no || null; if (no && /^JOB:/.test(no)) return; if (no && (!F.cur || F.cur.invoice.no !== no)) call('fin.get', {no: no}).then(function (r) { F.cur = r; if (F.open === no) renderInv(); }); } };
+  A.setInv = function (no) { if (F.open !== (no || null)) { F.open = no || null; if (no && /^(JOB|BID):/.test(no)) return; if (no && (!F.cur || F.cur.invoice.no !== no)) call('fin.get', {no: no}).then(function (r) { F.cur = r; if (F.open === no) renderInv(); }); } };
   setTimeout(function () { if (owner()) load(); }, 3000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && owner() && A.S.tab === 'fin' && !F.open) load(); });
 })();

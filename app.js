@@ -111,7 +111,7 @@
   }
 
   // ---------- api ----------
-  var READS = {'fin.list': 1, 'fin.get': 1, 'fin.file': 1, 'bootstrap': 1, 'tasks': 1, 'time.list': 1, 'walk.list': 1, 'walk.get': 1, 'equip.list': 1, 'equip.history': 1, 'lead.list': 1,
+  var READS = {'fin.list': 1, 'fin.get': 1, 'fin.file': 1, 'job.fin': 1, 'bid.list': 1, 'bid.get': 1, 'bootstrap': 1, 'tasks': 1, 'time.list': 1, 'walk.list': 1, 'walk.get': 1, 'equip.list': 1, 'equip.history': 1, 'lead.list': 1,
     'supplies.list': 1, 'shop.list': 1, 'shop.get': 1, 'chat.list': 1, 'chat.photo': 1, 'receipt.list': 1, 'receipt.get': 1, 'mlog.list': 1, 'briefing.get': 1, 'ask.list': 1, 'ask.photo': 1};
   /** POST to the backend with a time limit (a hung request on 1 bar never blocks the app). Writes carry a request id
    *  (rid) so a resend after a lost answer is recognised by the server and never done twice. */
@@ -746,6 +746,7 @@
   function openTask(id) {
     if (id === 'CHAT') { if (window.E10K.openChat) window.E10K.openChat(); return; }
     if (/^INVOICE-/.test(id)) { if (window.E10K.openInvoice) window.E10K.openInvoice(id.slice(8)); return; }
+    if (/^BID-/.test(id)) { if (window.E10K.openBid) window.E10K.openBid(id.slice(4)); return; }
     if (/^ASKSAM/.test(id)) { if (window.E10K.openAsk) window.E10K.openAsk({person: id.slice(7) || me().name}); return; }
     if (id === 'BRIEFING' || id === 'briefing') return openBriefing();
     var t = findTask(id); if (!t) return;
