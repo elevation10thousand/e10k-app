@@ -179,8 +179,35 @@ function niceDate(s) { if (!s) return '—'; var p = s.split('-'); return p.leng
 function monthName(m) { var p = m.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1]-1] + ' ' + p[0]; }
 function toast(msg, err) { var t = $('toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = 'none'; }, err ? 6000 : 2500); }
 function val(id) { var e = $(id); return e ? e.value.trim() : ''; }
-function openSheet(html) { $('panel').innerHTML = html; $('sheet').style.display = 'flex'; }
-function closeSheet() { $('sheet').style.display = 'none'; }
+// Android back button (11/13): every screen change and pop-up is a browser history entry,
+// so Back returns to the previous screen / closes the pop-up instead of leaving the app.
+function navState_(extra) { var o = { tp: 1, v: S.view, tail: S.tail }; if (extra) for (var k in extra) o[k] = extra[k]; return o; }
+function navPush_(replace, extra) {
+  try { if (replace || !(history.state && history.state.tp)) history.replaceState(navState_(extra), ''); else history.pushState(navState_(extra), ''); } catch (e) {}
+}
+function sheetIsOpen_() { return $('sheet').style.display === 'flex'; }
+function openSheet(html) {
+  var wasOpen = sheetIsOpen_();
+  $('panel').innerHTML = html; $('sheet').style.display = 'flex';
+  if (!wasOpen) { if (!(history.state && history.state.tp)) navPush_(true); try { history.pushState(navState_({ sheet: 1 }), ''); } catch (e) {} }
+}
+function closeSheet() {
+  if (!sheetIsOpen_()) return;
+  $('sheet').style.display = 'none';
+  if (history.state && history.state.sheet) { try { history.back(); } catch (e) {} }
+}
+window.addEventListener('popstate', function (e) {
+  var st = e.state;
+  if (sheetIsOpen_()) $('sheet').style.display = 'none';
+  if (!st || !st.tp) return;
+  if (st.sheet) { try { history.back(); } catch (x) {} return; }   // forward into an old pop-up: skip it
+  var v = st.v || 'home';
+  if (st.tail && st.tail !== S.tail && S.planes.some(function (p) { return p.tail === st.tail; })) {
+    S.tail = st.tail; try { localStorage.setItem('hangarTail', st.tail); } catch (x) {}
+    S.view = v; renderPlanes(); load(); return;
+  }
+  if (v !== S.view) { S.view = v; if (S.st) render(); window.scrollTo(0, 0); }
+});
 $('sheet').addEventListener('click', function (e) { if (e.target.id === 'sheet') closeSheet(); });
 
 // Cached first paint (11/06): show the last copy this phone saw right away, then refresh in the background.
@@ -226,7 +253,11 @@ function renderPlanes() {
     return '<button class="' + (p.tail === S.tail ? 'on' : '') + '" onclick="pickPlane(\'' + p.tail + '\')">' + esc(p.tail) + '</button>';
   }).join('');
 }
-function pickPlane(t) { S.tail = t; try { localStorage.setItem('hangarTail', t); } catch (e) {} S.view = 'home'; renderPlanes(); load(); }
+function pickPlane(t) {
+  if (t === S.tail && S.view === 'home') return;
+  if (!(history.state && history.state.tp)) navPush_(true);
+  S.tail = t; try { localStorage.setItem('hangarTail', t); } catch (e) {} S.view = 'home'; navPush_(false); renderPlanes(); load();
+}
 function load() {
   var cs = lsGet('state:' + S.tail);
   if (cs) { S.st = cs; render(); stale(true); }
@@ -239,7 +270,11 @@ function act(action, data, msg) {
   return call(action, data).then(function (st) { S.st = st; lsSet('state:' + S.tail, st); closeSheet(); toast(msg || 'Saved'); render(); return st; })
     .catch(function (e) { toast(e.message, true); throw e; });
 }
-function go(v) { S.view = v; render(); window.scrollTo(0, 0); }
+function go(v, replace) {
+  if (v === S.view && !replace) { window.scrollTo(0, 0); return; }
+  if (!(history.state && history.state.tp)) navPush_(true);
+  S.view = v; navPush_(!!replace); render(); window.scrollTo(0, 0);
+}
 function render() {
   var st = S.st;
   $('nav').innerHTML = VIEWS.filter(function (v) { return v[0] !== 'bills' || st.billing; }).map(function (v) {
@@ -360,7 +395,7 @@ function saveFlight() {
     fuelAdded: val('f_fa'), fuelEndL: val('f_el'), fuelEndR: val('f_er'), notes: val('f_notes') };
   var sq = $('f_sq').checked;
   $('f_save').disabled = true; $('f_save').textContent = 'Saving…';
-  act('logFlight', d, 'Flight saved').then(function () { if (sq) { S.view = 'squawks'; render(); newSquawk(); } else go('home'); })
+  act('logFlight', d, 'Flight saved').then(function () { if (sq) { go('squawks', true); newSquawk(); } else go('home', true); })
     .catch(function () { var b = $('f_save'); if (b) { b.disabled = false; b.textContent = 'Save flight'; } });
 }
 
