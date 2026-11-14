@@ -58,7 +58,7 @@
   function badge() {
     var ic = document.querySelector('[data-tab=fin] .ic'); if (!ic) return;
     var old = ic.querySelector('.badge'); if (old) old.remove();
-    var c = badgeCount();
+    var c = A.seenBadge('fin', badgeCount());
     if (c) ic.insertAdjacentHTML('beforeend', '<span class="badge" style="background:var(--orange)">' + c + '</span>');
   }
 

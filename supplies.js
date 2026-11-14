@@ -24,8 +24,14 @@
   function linkify(t) {
     return esc(fixNl(t)).replace(/(https?:\/\/[^\s<]+)/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">' + (u.length > 45 ? u.slice(0, 42) + '\u2026' : u) + '</a>'; });
   }
+  // off the tab the count comes from bootstrap (no extra polling); on the tab, from the lists just loaded
+  function tabCount() {
+    var d = A.S.data || {};
+    if (A.S.tab !== 'supplies' && d.supplyCount !== undefined) return (d.supplyCount || 0) + (A.me().owner ? (d.shopCheck || 0) + (d.rcLook || 0) : 0);
+    return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() + rcLook() : 0) : (d.supplyCount || 0) + (d.shopCheck || 0);
+  }
   function badge() {
-    var n = count() + (A.me().owner ? checkCount() : 0);
+    var n = A.seenBadge('supplies', tabCount());
     var ic = document.querySelector('[data-tab=supplies] .ic'); if (!ic) return;
     var old = ic.querySelector('.badge'); if (old) old.remove();
     if (n) ic.insertAdjacentHTML('beforeend', '<span class="badge"' + (A.me().owner && checkCount() ? ' style="background:var(--orange)"' : '') + '>' + n + '</span>');
@@ -427,11 +433,7 @@
   A.addTab({k: 'supplies', n: 'Supplies', ic: A.svg('<path d="M3 4h2l2.4 11h11.2L21 7H6.2M9 20a1 1 0 1 0 0-.01M18 20a1 1 0 1 0 0-.01"/>'),
     render: function () { render(); },
     // off the tab the count comes from bootstrap (no extra polling); on the tab, from the lists just loaded
-    badge: function () {
-      var d = A.S.data || {};
-      if (A.S.tab !== 'supplies' && d.supplyCount !== undefined) return (d.supplyCount || 0) + (A.me().owner ? (d.shopCheck || 0) + (d.rcLook || 0) : 0);
-      return SUP.items || SHOP.items ? count() + (A.me().owner ? checkCount() + rcLook() : 0) : (d.supplyCount || 0) + (d.shopCheck || 0);
-    },
+    badge: tabCount,
     fab: function () { return view() === 'shop' ? shopForm() : view() === 'receipts' ? receiptForm() : buyForm(); }});
 
   document.addEventListener('click', function (e) {

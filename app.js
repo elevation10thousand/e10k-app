@@ -368,17 +368,28 @@
     return t;
   }
 
+  // Tab badges show what's NEW since you last opened that tab (Spencer 11/14: looking at a tab clears its number).
+  // The full counts stay inside each tab. Stored per phone: the count you last saw; it shows only what's been added since.
+  function seenBadge(k, n) {
+    n = n || 0;
+    var s = ls.get('tabSeenN', {});
+    if (S.tab === k) { if (s[k] !== n) { s[k] = n; ls.set('tabSeenN', s); } return 0; }
+    if (s[k] === undefined) return n;
+    if (n < s[k]) { s[k] = n; ls.set('tabSeenN', s); return 0; }
+    return n - s[k];
+  }
+
   function render() {
     if (!TOKEN) return signedOut();
     if (!S.data) { $('#view').innerHTML = '<div class="empty">Loading\u2026</div>'; return; }
     var tabs = tabsFor();
     if (!tabs.some(function (t) { return t.k === S.tab; })) S.tab = 'mine';
     $('#tabs').innerHTML = tabs.map(function (t) {
-      var nf = ((S.data && S.data.flags) || []).length;
-      var badge = t.k === 'mine' && newCount() ? '<span class="badge">' + newCount() + '</span>' :
-        (t.k === 'mine' && urgentCount() ? '<span class="badge" style="background:var(--red)">' + urgentCount() + '</span>' : '') ||
+      var nf = seenBadge('equip', ((S.data && S.data.flags) || []).length), mineN = t.k === 'mine' ? seenBadge('mine', newCount() + urgentCount()) : 0;
+      var xb = t.badge ? seenBadge(t.k, t.badge()) : 0;
+      var badge = t.k === 'mine' && mineN ? '<span class="badge">' + mineN + '</span>' :
         (t.k === 'equip' && nf ? '<span class="badge" style="background:var(--red)">' + nf + '</span>' :
-        (t.badge && t.badge() ? '<span class="badge">' + t.badge() + '</span>' :
+        (xb ? '<span class="badge">' + xb + '</span>' :
         (t.k === 'hours' && runningCount() ? '<span class="badge" style="background:var(--green)">' + runningCount() + '</span>' :
         (t.k === 'hours' && S.data && S.data.clock ? '<span class="badge" style="background:var(--green);min-width:10px;height:10px;padding:0"></span>' : ''))));
       return '<button data-tab="' + t.k + '" class="' + (S.tab === t.k ? 'on' : '') + '"><span class="ic">' + t.ic + badge + '</span>' + t.n + '</button>';
@@ -445,7 +456,7 @@
     var eb = document.querySelector('[data-tab=equip] .ic');
     if (eb) {
       var old = eb.querySelector('.badge'); if (old) old.remove();
-      var n = ((S.data && S.data.flags) || []).length;
+      var n = seenBadge('equip', ((S.data && S.data.flags) || []).length);
       if (n) eb.insertAdjacentHTML('beforeend', '<span class="badge" style="background:var(--red)">' + n + '</span>');
     }
   }
@@ -1393,7 +1404,7 @@
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me, idb: idb, mach: mach,
     options: options, to12: to12, nowHM: nowHM, sinceTxt: sinceTxt, flush: flush, syncBadge: syncBadge,
-    addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
+    seenBadge: seenBadge, addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
