@@ -4,7 +4,7 @@
   var A = window.E10K;
   if (!A) return;
   var $ = A.$, esc = A.esc, ls = A.ls, toast = A.toast;
-  var C = {msgs: ls.get('chat', []), open: false, timer: null, photos: {}};
+  var C = {msgs: ls.get('chat', []), open: false, timer: null, photos: {}, reads: ls.get('chatReads', {})};
 
   function last() { return C.msgs.length ? C.msgs[C.msgs.length - 1].ms || 0 : 0; }
   function unread() {
@@ -30,9 +30,13 @@
   function poll() {
     if (!navigator.onLine || !A.S.data) return Promise.resolve();
     var since = 0; C.msgs.forEach(function (m) { if (!m.pending && (m.ms || 0) > since) since = m.ms; });
-    return A.api('chat.list', {since: since}).then(function (r) {
+    var q = {since: since}; if (C.open && document.visibilityState !== 'hidden') q.seen = last();
+    return A.api('chat.list', q).then(function (r) {
       if (!r.ok) return;
-      if (merge(r.messages) && C.open) draw(true);
+      if (r.reads && !C.hasReads) { C.hasReads = true; ls.set('chatHasReads', 1); }
+      var rc = r.reads && JSON.stringify(r.reads) !== JSON.stringify(C.reads);
+      if (rc) { C.reads = r.reads; ls.set('chatReads', C.reads); }
+      if (merge(r.messages) && C.open) draw(true); else if (rc && C.open) draw(false);
       if (C.open) ls.set('chatSeen', last());
       badge();
     }).catch(function () {});
@@ -45,7 +49,8 @@
   }
   function draw(scroll) {
     var box = document.getElementById('chat-list'); if (!box) return;
-    var me = A.me().name, lastDay = '', html = '';
+    var me = A.me().name, lastDay = '', html = '', lastMine = null;
+    C.msgs.forEach(function (m) { if (m.from === me && !m.pending) lastMine = m; });
     if (!C.msgs.length) html = '<div class="empty">No messages yet. Say hi \ud83d\udc4b</div>';
     C.msgs.forEach(function (m) {
       var d = dayLabel(m.when); if (d && d !== lastDay) { html += '<div class="cday">' + esc(d === A.todayStr() ? 'Today' : d) + '</div>'; lastDay = d; }
@@ -53,7 +58,7 @@
       html += '<div class="cmsg' + (mine ? ' mine' : '') + '">' + (mine ? '' : '<div class="cfrom">' + esc(m.from) + '</div>') +
         (m.photo ? '<div class="cph" data-cph="' + esc(m.id) + '">' + (C.photos[m.id] ? '<img src="' + C.photos[m.id] + '">' : (m.localPhoto ? '<img src="' + m.localPhoto + '">' : '\ud83d\udcf7 Loading photo\u2026')) + '</div>' : '') +
         (m.text ? '<div class="ctext">' + esc(m.text).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>') + '</div>' : '') +
-        '<div class="ctime">' + (m.pending ? 'sending\u2026' : esc(timeLabel(m.when))) + '</div></div>';
+        '<div class="ctime">' + (m.pending ? 'sending\u2026' : esc(timeLabel(m.when))) + '</div></div>' + (m === lastMine ? seenLine(m) : '');
     });
     box.innerHTML = html;
     Array.prototype.forEach.call(box.querySelectorAll('[data-cph]'), function (el) {
@@ -66,6 +71,14 @@
     if (scroll) box.scrollTop = box.scrollHeight;
   }
 
+  // "Seen by" under your newest message (Spencer 11/16). Seen = opened the chat after it arrived.
+  function seenLine(m) {
+    var me = A.me().name, people = ((A.S.data && A.S.data.people) || []).filter(function (p) { return p && p !== me; });
+    if (!people.length || !m.ms || !(C.hasReads || ls.get('chatHasReads', 0))) return '';   // server not updated yet
+    var yes = people.filter(function (p) { return (C.reads[p] || 0) >= m.ms; }), no = people.filter(function (p) { return yes.indexOf(p) < 0; });
+    var t = !yes.length ? 'Not seen yet' : (no.length ? 'Seen by ' + yes.join(', ') + ' \u00b7 ' + no.join(', ') + (no.length === 1 ? ' hasn\u2019t' : ' haven\u2019t') + ' seen it' : '\u2713 Seen by everyone');
+    return '<div class="cseen">' + esc(t) + '</div>';
+  }
   function openChat() {
     var panel = document.getElementById('chat-panel');
     panel.classList.remove('hidden'); document.body.style.overflow = 'hidden'; C.open = true;
