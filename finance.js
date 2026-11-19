@@ -65,7 +65,7 @@
   // ---------- shared bits ----------
   function seg() {
     var v = view();
-    return '<div class="tl-seg">' + [['inv', 'Invoices'], ['jobs', 'Jobs'], ['bids', 'Bids'], ['bills', 'Bills'], ['money', 'Money']].map(function (x) {
+    return '<div class="tl-seg">' + [['inv', 'Invoices'], ['jobs', 'Jobs'], ['bids', 'Bids'], ['bills', 'Bills'], ['pay', 'Payroll'], ['money', 'Money']].map(function (x) {
       return '<button class="' + (v === x[0] ? 'on' : '') + '" data-finview="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
   }
   function box(key, title, count, rows, opt) {
@@ -109,6 +109,7 @@
     else if (v === 'money') html += moneyHtml();
     else if (v === 'jobs') html += jobsHtml();
     else if (v === 'bids') html += A.bidsHtml ? A.bidsHtml() : '';
+    else if (v === 'pay') html += A.payHtml ? A.payHtml() : '';
     else html += invHtml();
     $('#view').innerHTML = html;
     badge();
@@ -611,7 +612,7 @@
   A.addTab({k: 'fin', n: 'Finance', show: owner, badge: badgeCount,
     ic: A.svg('<path d="M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5S7 4.6 7 6.5 9.2 9.6 12 10s5 1.6 5 3.5-2.2 3.5-5 3.5-5-1.6-5-3.5"/>'),
     render: function () { render(); },
-    fab: function () { if (F.open && /^JOB:/.test(F.open)) return billForm(F.open.slice(4)); if (F.open && /^BID:/.test(F.open)) return A.bidLineFab(); if (!F.open && view() === 'bids') return A.bidFab(); if (F.open) return F.cur && ['Draft', 'Waiting on Spencer', 'Approved'].indexOf(F.cur.invoice.status) >= 0 ? lineForm(null) : null; if (view() === 'bills') return billForm(); return newInvoice(''); }});
+    fab: function () { if (F.open && /^JOB:/.test(F.open)) return billForm(F.open.slice(4)); if (F.open && /^BID:/.test(F.open)) return A.bidLineFab(); if (!F.open && view() === 'bids') return A.bidFab(); if (!F.open && view() === 'pay') return toast('Use \u201cMark paid\u201d under each person'); if (F.open) return F.cur && ['Draft', 'Waiting on Spencer', 'Approved'].indexOf(F.cur.invoice.status) >= 0 ? lineForm(null) : null; if (view() === 'bills') return billForm(); return newInvoice(''); }});
   A.openInvoice = function (no) { if (!owner()) return; openInv(no); };
   A.openBidRoute = function (no) {
     F.open = 'BID:' + no;

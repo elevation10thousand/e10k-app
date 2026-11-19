@@ -246,3 +246,6 @@ nav#tabs button { font-size: 10.5px; }
 .fn-brow .jb-in { width: 110px; flex: none; text-align: right; margin: 0; }
 
 .cseen { text-align: right; font-size: 12px; color: var(--dim); margin: -2px 4px 8px; }
+
+.tl-seg { overflow-x: auto; }
+.tl-seg button { min-width: 0; padding-left: 2px; padding-right: 2px; font-size: 13px; white-space: nowrap; }
