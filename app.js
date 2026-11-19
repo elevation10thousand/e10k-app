@@ -1010,15 +1010,9 @@
       '<div id="h-catw"></div>' +
       '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="' + (pre ? pre.start : '07:00') + '"></div>' +
       '<div><label>End</label><input type="time" id="h-end" value="' + (pre ? pre.end : '') + '"></div></div>' +
-      '<label>Machines used <span class="sub">(skip if none)</span></label><div id="h-mlist"></div>' +
-      '<button class="btn" id="h-madd" style="width:100%">+ Add a machine</button>' +
+      '<div class="sub" style="margin-top:8px">Machine hours go on the Equipment tab (Start / Close out).</div>' +
       '<label>What you did</label><textarea id="h-work" placeholder="Type, or tap 🎤 to talk"></textarea>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
-    var n = 0;
-    function addLine() {
-      $('#h-mlist').insertAdjacentHTML('beforeend', machineLine(n++));
-      $('#h-madd').textContent = '+ Add another machine';
-    }
     sheet(html, function (act) {
       if (act !== 'save') return closeSheet();
       var f = {date: isoToUs($('#h-date').value), job: $('#h-job').value, start: to12($('#h-start').value), end: to12($('#h-end').value),
@@ -1069,14 +1063,16 @@
         S.hours.unshift(Object.assign({pending: true, person: m.name}, f));
         localLogs(f.id);
         enqueue('time.clockout', {fields: f});
-        save(); closeSheet(); render(); toast('Clocked out \u2013 hours logged' + (stillOn.length ? '. Still running: ' + stillOn.join(', ') : ''));
+        save(); closeSheet(); render(); toast('Clocked out \u2013 hours logged');
+        machineNudge(m.name, f.date, f.job);
         return;
       }
       f.clientId = uid();
       localLogs(f.clientId);
       S.hours.unshift(Object.assign({pending: true, person: f.person || m.name}, f));
       enqueue('time.create', {fields: f});
-      save(); closeSheet(); render(); toast('Hours logged' + (stillOn.length ? '. Still running: ' + stillOn.join(', ') : ''));
+      save(); closeSheet(); render(); toast('Hours logged');
+      if (!f.person || f.person === m.name) machineNudge(m.name, f.date, f.job);
     });
     function drawCat() {
       var jn = $('#h-job').value, j = S.data.jobs.filter(function (x) { return x.name === jn; })[0], w = $('#h-catw');
@@ -1085,17 +1081,28 @@
       w.innerHTML = cats && cats.length ? '<label>What part of the job?</label><select id="h-cat">' + options(cats, ls.get('lastCat:' + jn, ''), true) + '</select>' : '';
     }
     $('#h-job').addEventListener('change', drawCat); drawCat();
-    $('#h-madd').onclick = function (e) { e.stopPropagation(); addLine(); };
-    if (pre && pre.machines) pre.machines.forEach(function (x) {
-      addLine(); var el = document.querySelector('#h-mlist .mline:last-child');
-      el.querySelector('.h-mach').value = x.machine; wireLine(el); el.querySelector('.h-ms').value = x.meterStart || '';
-    });
-    $('#h-mlist').onchange = function (e) { var el = e.target.closest('.mline'); if (el && e.target.classList.contains('h-mach')) wireLine(el); };
-    $('#h-mlist').onclick = function (e) {
-      var d = e.target.closest('[data-mdel]'); if (!d) return; e.stopPropagation();
-      d.closest('.mline').remove();
-      if (!document.querySelector('#h-mlist .mline')) $('#h-madd').textContent = '+ Add a machine';
-    };
+  }
+
+  // Spencer 11/18: machine hours only on the Equipment tab. After hours are saved, check the machine side:
+  // a machine still running for this person -> offer to close it; none logged today -> ask if they ran one.
+  function machineNudge(person, date, job) {
+    if (!window.E10K.mlogStartForm || /General \/ Office/.test(job || '')) return;
+    var run = ((S.data && S.data.mlogOpen) || []).filter(function (l) { return l.operator === person; });
+    var had = (S.mlogs || []).some(function (x) { return x.operator === person && x.date === date && x.status !== 'Cancelled'; });
+    setTimeout(function () {
+      if (run.length) {
+        sheet('<h2>\ud83d\udfe2 Still running</h2><div class="kv">' + esc(run.map(function (l) { return l.machine; }).join(', ')) + ' is still running for you.</div>' +
+          '<div class="sub">If you\u2019re done with it, close it out with the hour meter.</div>' +
+          '<div class="btns"><button class="btn" data-act="x">Later</button><button class="btn primary" data-act="close">Close it out</button></div>', function (a) {
+          closeSheet(); if (a === 'close') setTimeout(function () { window.E10K.mlogCloseForm(run[0]); }, 350);
+        });
+      } else if (!had && date === todayStr()) {
+        sheet('<h2>Did you run a machine today?</h2><div class="sub">Machine hours go on the Equipment tab.</div>' +
+          '<div class="btns"><button class="btn" data-act="x">No</button><button class="btn primary" data-act="log">Log machine hours</button></div>', function (a) {
+          closeSheet(); if (a === 'log') setTimeout(function () { S.tab = 'equip'; ls.set('tab', 'equip'); render(); window.E10K.mlogStartForm(''); }, 350);
+        });
+      }
+    }, 450);
   }
 
   // ---------- walkthroughs ----------
