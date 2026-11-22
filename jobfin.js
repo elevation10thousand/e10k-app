@@ -7,7 +7,7 @@
   var A = window.E10K;
   if (!A) return;
   var $ = A.$, esc = A.esc, toast = A.toast;
-  var JF = {cur: null, job: null, open: {}, showAll: false, busy: false};
+  var JF = {cur: null, job: null, open: {}, showAll: false, busy: false, dayOpen: {}, allDays: false};
 
   function n(v) { var x = parseFloat(String(v === undefined || v === null ? '' : v).replace(/[$,\s]/g, '')); return isNaN(x) ? 0 : x; }
   function money(v, cents) { var x = n(v), s = (cents === false ? Math.round(Math.abs(x)).toString() : Math.abs(x).toFixed(2)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (x < 0 ? '-$' : '$') + s; }
@@ -61,6 +61,59 @@
     if (!r.cats.some(function (c) { return c.hasBudget; })) out.push(['dim', 'No budget yet \u2013 tap \u201cEdit budget\u201d to add one.']);
     return out;
   }
+  // ---------- hours by day (Hanna 11/22): crew and machine hours side by side, never added together ----------
+  function hrs(v) { return (Math.round((+v || 0) * 100) / 100) + ' hrs'; }
+  function dayLabel(d) { var p = String(d || '').split('/'); if (p.length !== 3) return d || 'no date';
+    var y = +p[2] < 100 ? 2000 + +p[2] : +p[2], dt = new Date(y, +p[0] - 1, +p[1]);
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dt.getDay()] + ' ' + (+p[0]) + '/' + (+p[1]) + (y !== new Date().getFullYear() ? '/' + String(y).slice(-2) : ''); }
+  function hoursHtml(r) {
+    var days = r.days || [], s = r.score;
+    var html = '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Hours by day</div><div class="tl-hc">Crew ' + hrs(s.hours) + ' \u00b7 Machines ' + hrs(s.machineHrs) + '</div></div>';
+    if (!days.length) return html + '<div class="tl-hs">No crew or machine hours on this job yet.</div></div>';
+    html += '<div class="tl-hs">Crew and machine hours are kept apart \u2013 an operator\u2019s machine time is also in his crew hours, so don\u2019t add them.</div>';
+    var show = JF.allDays ? days : days.slice(0, 20);
+    show.forEach(function (d) {
+      var open = !!JF.dayOpen[d.key];
+      var cost = [d.crewCost ? 'crew ' + money(d.crewCost, false) : '', d.machCost ? 'machines ' + money(d.machCost, false) : '',
+        d.machCostUnknownHrs ? hrs(d.machCostUnknownHrs) + ' machine time with no hourly cost yet' : ''].filter(Boolean).join(' \u00b7 ');
+      html += '<div class="fn-r" data-jfday="' + esc(d.key) + '" style="flex-direction:column;gap:2px' + (open ? ';background:#151515' : '') + '"><div style="display:flex;gap:8px;width:100%;align-items:baseline">' +
+        '<div class="tl-x"><div class="fn-t"><b>' + esc(dayLabel(d.date)) + '</b></div></div>' +
+        '<div class="fn-amt" style="font-weight:400;white-space:nowrap">Crew <b>' + hrs(d.crewHrs) + '</b> \u00b7 Machines <b>' + hrs(d.machHrs) + '</b> ' + (open ? '\u25b4' : '\u203a') + '</div></div>' +
+        ((cost || d.running) ? '<div class="tl-s">' + esc(cost) + (d.running ? (cost ? ' \u00b7 ' : '') + '<span style="color:var(--orange)">' + d.running + ' machine' + (d.running === 1 ? '' : 's') + ' still running</span>' : '') + '</div>' : '') + '</div>';
+      if (open) {
+        d.crew.forEach(function (c) {
+          html += '<div class="fn-r" style="padding-left:26px"><div class="tl-x"><div class="fn-t" style="font-size:14px">\ud83d\udc77 ' + esc(c.person) + ' \u00b7 ' + hrs(c.hours) + '</div><div class="tl-s">' +
+            esc([c.start && c.end ? c.start + '\u2013' + c.end : '', c.work, c.category].filter(Boolean).join(' \u00b7 ')) + '</div></div><div class="fn-amt" style="font-size:14px">' + money(c.cost) + '</div></div>'; });
+        d.machines.forEach(function (m) {
+          html += '<div class="fn-r" style="padding-left:26px"><div class="tl-x"><div class="fn-t" style="font-size:14px">\u2699 ' + esc(m.machine) + ' \u00b7 ' +
+            (m.running ? '<span style="color:var(--orange)">running</span>' : hrs(m.hours)) + '</div><div class="tl-s">' +
+            esc([m.operator ? 'run by ' + m.operator : '', m.running ? (m.since ? 'started ' + m.since : '') + (m.meterStart !== '' ? ' at meter ' + m.meterStart : '') : (m.meterStart !== '' && m.meterEnd !== '' ? 'meter ' + m.meterStart + '\u2192' + m.meterEnd : '')].filter(Boolean).join(' \u00b7 ')) +
+            '</div></div><div class="fn-amt" style="font-size:14px">' + (m.running ? '\u2013' : (m.cost === null ? '<span class="tl-s">no hourly cost yet</span>' : money(m.cost))) + '</div></div>'; });
+        if (!d.crew.length && !d.machines.length) html += '<div class="tl-hs">Nothing logged.</div>';
+      }
+    });
+    html += '<div class="fn-bar">' + (days.length > 20 ? '<button class="btn" data-jfa="alldays">' + (JF.allDays ? 'Show the last 20 days' : 'Show all ' + days.length + ' days') + '</button>' : '') +
+      '<button class="btn primary" data-jfa="hrsdl">\u2b07 Download hours</button></div></div>';
+    return html;
+  }
+  function csvCell(v) { v = v === null || v === undefined ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function downloadHours() {
+    var r = JF.cur, rows = [['Date', 'Type', 'Person / Machine', 'Operator', 'Hours', 'Start', 'End', 'Meter start', 'Meter end', 'Cost $', 'Work done / notes', 'Category']];
+    (r.days || []).slice().reverse().forEach(function (d) {
+      d.crew.forEach(function (c) { rows.push([d.date, 'Crew', c.person, '', c.hours, c.start, c.end, '', '', n(c.cost).toFixed(2), c.work, c.category]); });
+      d.machines.forEach(function (m) { rows.push([d.date, 'Machine', m.machine, m.operator, m.running ? '' : m.hours, '', '', m.meterStart, m.running ? '' : m.meterEnd,
+        m.running || m.cost === null ? '' : n(m.cost).toFixed(2), m.running ? 'still running' + (m.since ? ' (started ' + m.since + ')' : '') : (m.cost === null ? 'no hourly cost set for this machine yet' : ''), '']); });
+    });
+    rows.push([]); rows.push(['Total', 'Crew', '', '', r.score.hours, '', '', '', '', n(r.score.payroll).toFixed(2)]);
+    rows.push(['Total', 'Machines', '', '', r.score.machineHrs, '', '', '', '', n(r.score.machine).toFixed(2), r.score.machineUnknownHrs ? r.score.machineUnknownHrs + ' hrs have no hourly cost yet' : '']);
+    var csv = '\ufeff' + rows.map(function (x) { return x.map(csvCell).join(','); }).join('\r\n');
+    var name = r.job.job.replace(/[\\/:*?"<>|]/g, '') + ' - hours by day.csv';
+    var url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'})), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    toast('Downloaded \u2013 opens in Excel or Sheets');
+  }
+
   function chart(r) {
     // cumulative cost vs billed by month
     var m = {};
@@ -112,6 +165,7 @@
     html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Budget vs actual</div><div class="tl-hc">' + (s.budget ? money(s.spent, false) + ' / ' + money(s.budget, false) : '') + '</div></div>' +
       (rows.length ? rows.join('') : '<div class="tl-hs">Nothing spent or budgeted yet.</div>') +
       '<div class="fn-bar"><button class="btn primary" data-jfa="budget">Edit budget</button><button class="btn" data-jfa="all">' + (JF.showAll ? 'Hide empty' : 'Show all categories') + '</button></div></div>';
+    html += hoursHtml(r);
     html += chart(r);
     // change orders
     html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Change orders</div><div class="tl-hc">' + (s.coApproved ? money(s.coApproved, false) + ' approved' : r.changeOrders.length) + '</div></div>' +
@@ -321,7 +375,10 @@
       if (a === 'startck') return call('job.setup', {job: r.job.job, checklist: true}).then(function (x) { toast('Checklist started'); set(x); });
       if (a === 'ckadd') return addItemSheet();
       if (a === 'ckreset') return call('job.setup', {job: r.job.job, checklist: true}).then(set);
+      if (a === 'alldays') { JF.allDays = !JF.allDays; return draw(); }
+      if (a === 'hrsdl') return downloadHours();
     }
+    if ((t = e.target.closest('[data-jfday]'))) { var dk = t.getAttribute('data-jfday'); JF.dayOpen[dk] = !JF.dayOpen[dk]; return draw(); }
     if ((t = e.target.closest('[data-jfcat]'))) return catSheet(t.getAttribute('data-jfcat'));
     if ((t = e.target.closest('[data-jfco]'))) return coSheet(r.changeOrders.filter(function (c) { return c.id === t.getAttribute('data-jfco'); })[0]);
     if ((t = e.target.closest('[data-jfstagemenu]'))) return stageSheet(t.getAttribute('data-jfstagemenu'));
@@ -334,6 +391,6 @@
     if ((t = e.target.closest('[data-jfitem]'))) return itemSheet(r.checklist.filter(function (x) { return x.id === t.getAttribute('data-jfitem'); })[0]);
   });
 
-  A.renderJob = function (job) { if (JF.job !== job || !JF.cur) { JF.firstOpen = null; JF.open = {}; load(job); } else draw(); };
+  A.renderJob = function (job) { if (JF.job !== job || !JF.cur) { JF.firstOpen = null; JF.open = {}; JF.dayOpen = {}; JF.allDays = false; load(job); } else draw(); };
   A.reloadJob = function () { if (JF.job) load(JF.job); };
 })();
