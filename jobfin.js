@@ -51,14 +51,14 @@
       out.push(['orange', 'You\u2019ve spent ' + s.budgetPct + '% of the budget but the job is ' + s.pctComplete + '% done \u2013 watch the remaining work.']);
     if (s.budgetPct !== null && s.pctComplete !== null && s.pctComplete - s.budgetPct > 10)
       out.push(['green', s.pctComplete + '% done for ' + s.budgetPct + '% of the budget \u2013 running under.']);
-    if (s.projProfit !== null) out.push([s.projProfit < 0 ? 'red' : 'dim', 'If every category lands at its budget (or what\u2019s spent, if more), the job ends at ' + money(s.projProfit, false) + ' profit.']);
+    if (s.projProfit !== null && !r.job.noBill) out.push([s.projProfit < 0 ? 'red' : 'dim', 'If every category lands at its budget (or what\u2019s spent, if more), the job ends at ' + money(s.projProfit, false) + ' profit.']);
     var uns = r.cats.filter(function (c) { return c.cat === 'Not sorted yet'; })[0];
-    if (uns && uns.items.length) out.push(['dim', uns.items.length + ' entr' + (uns.items.length === 1 ? 'y isn\u2019t' : 'ies aren\u2019t') + ' sorted into a category yet \u2013 tap \u201cNot sorted yet\u201d below.']);
+    if (uns && uns.items.length && !r.job.noBill) out.push(['dim', uns.items.length + ' entr' + (uns.items.length === 1 ? 'y isn\u2019t' : 'ies aren\u2019t') + ' sorted into a category yet \u2013 tap \u201cNot sorted yet\u201d below.']);
     if (s.machineUnknownHrs) out.push(['dim', s.machineUnknownHrs + ' machine hours aren\u2019t in the cost yet \u2013 waiting on what each machine costs us per hour.']);
     if (s.direct) out.push(['dim', money(s.direct, false) + ' was paid by the client straight to vendors. It counts toward the budget but not our cost or income.']);
-    if (s.owed) out.push(['blue', money(s.owed, false) + ' billed and not paid yet.']);
-    if (s.readyCount) out.push(['blue', money(s.ready, false) + ' is ready to bill (' + s.readyCount + ' items).']);
-    if (!r.cats.some(function (c) { return c.hasBudget; })) out.push(['dim', 'No budget yet \u2013 tap \u201cEdit budget\u201d to add one.']);
+    if (s.owed && !r.job.noBill) out.push(['blue', money(s.owed, false) + ' billed and not paid yet.']);
+    if (s.readyCount && !r.job.noBill) out.push(['blue', money(s.ready, false) + ' is ready to bill (' + s.readyCount + ' items).']);
+    if (!r.cats.some(function (c) { return c.hasBudget; }) && !r.job.noBill) out.push(['dim', 'No budget yet \u2013 tap \u201cEdit budget\u201d to add one.']);
     return out;
   }
   // ---------- hours by day (Hanna 11/22): crew and machine hours side by side, never added together ----------
@@ -140,14 +140,17 @@
       esc([j.client, j.type || 'no job type', j.contract ? j.contract + (j.contractAmt ? ' ' + money(j.contractAmt, false) : '') + (j.markup ? ' + ' + j.markup + '% ' + (j.feeLabel || 'fee') : '') : '', j.status].filter(Boolean).join(' \u00b7 ')) +
       '</div></div><button class="btn" data-jfa="setup" style="flex:none;min-width:0;padding:8px 12px">\u2699 Setup</button></div>';
     var pc = s.margin === null ? '' : (s.profit < 0 ? 'var(--red)' : (s.margin < 10 ? 'var(--orange)' : 'var(--green)'));
-    html += '<div class="fn-tiles" style="margin-top:10px">' +
-      tile('Cost so far', money(s.cost, false), 'bills ' + money(s.costs, false) + ' \u00b7 crew ' + money(s.payroll, false) + ' \u00b7 machines ' + money(s.machine, false)) +
+    if (j.noBill) html += '<div class="sam-box" style="margin:10px 0 0"><div class="tl-s">Not billed \u2013 this job tracks cost and hours only. Nothing here goes on an invoice; crew pay still shows as owed in Payroll.</div></div>';
+    html += '<div class="fn-tiles" style="margin-top:10px">' + (j.noBill ? tile('Cost so far', money(s.cost, false), 'bills ' + money(s.costs, false) + ' \u00b7 crew ' + money(s.payroll, false) + ' \u00b7 machines ' + money(s.machine, false)) +
+      tile('Crew hours', hrs(s.hours), '') + tile('Machine hours', hrs(s.machineHrs), '') +
+      (s.budget ? tile('Budget used', s.budgetPct + '%', money(s.spent, false) + ' of ' + money(s.budget, false), s.budgetPct > 100 ? 'var(--red)' : '') : '') + '</div>' : '') +
+      (j.noBill ? '' : tile('Cost so far', money(s.cost, false), 'bills ' + money(s.costs, false) + ' \u00b7 crew ' + money(s.payroll, false) + ' \u00b7 machines ' + money(s.machine, false)) +
       tile('Earned', money(s.earned, false), esc(s.earnedHow)) +
       tile('Profit so far', money(s.profit, false), s.margin === null ? '' : s.margin + '% margin', pc) +
       tile('Budget used', s.budgetPct === null ? '\u2013' : s.budgetPct + '%', s.budget ? money(s.spent, false) + ' of ' + money(s.budget, false) + (s.direct ? ' (incl. ' + money(s.direct, false) + ' the client paid directly)' : '') : 'no budget yet', s.budgetPct > 100 ? 'var(--red)' : '') +
       tile('Done', s.pctComplete === null ? '\u2013' : s.pctComplete + '%', s.pctComplete === null ? 'no checklist yet' : 'of the checklist') +
       tile('Billed', money(s.billed, false), 'collected ' + money(s.collected, false) + (s.owed ? ' \u00b7 owed ' + money(s.owed, false) : '') + (s.billedBefore ? ' \u00b7 before the app ' + money(s.billedBefore, false) : '')) +
-      '</div>';
+      '</div>');
     var nt = notes(r);
     if (nt.length) html += '<div class="sam-box" style="margin:0 0 10px"><div class="tl-s" style="margin-bottom:4px">\ud83e\udd16 Sam\u2019s notes</div>' + nt.map(function (x) {
       return '<div style="margin:3px 0;color:' + ({red: '#ff8a80', orange: '#ffc069', green: '#8fe3a8', blue: '#9cc3ff', dim: '#cfd6e0'}[x[0]]) + '">\u2022 ' + x[1] + '</div>'; }).join('') + '</div>';
@@ -166,9 +169,9 @@
       (rows.length ? rows.join('') : '<div class="tl-hs">Nothing spent or budgeted yet.</div>') +
       '<div class="fn-bar"><button class="btn primary" data-jfa="budget">Edit budget</button><button class="btn" data-jfa="all">' + (JF.showAll ? 'Hide empty' : 'Show all categories') + '</button></div></div>';
     html += hoursHtml(r);
-    html += chart(r);
-    // change orders
-    html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Change orders</div><div class="tl-hc">' + (s.coApproved ? money(s.coApproved, false) + ' approved' : r.changeOrders.length) + '</div></div>' +
+    if (!j.noBill) html += chart(r);
+    // change orders (not on not-billed jobs)
+    if (!j.noBill) html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Change orders</div><div class="tl-hc">' + (s.coApproved ? money(s.coApproved, false) + ' approved' : r.changeOrders.length) + '</div></div>' +
       r.changeOrders.map(function (c) {
         return '<div class="fn-r" data-jfco="' + esc(c.id) + '"><div class="tl-x"><div class="fn-t">' + esc((c.no ? c.no + ' \u00b7 ' : '') + c.desc) + '</div><div class="tl-s">' +
           (c.approvedBy ? '<span style="color:var(--green)">approved by ' + esc(c.approvedBy) + '</span>' : '<span style="color:var(--orange)">not approved yet</span>') + (c.billed ? ' \u00b7 billed' : '') +
@@ -177,7 +180,7 @@
     // checklist
     html += checklistHtml(r);
     // invoices
-    if (r.invoices.length) html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Invoices</div><div class="tl-hc">' + r.invoices.length + '</div></div>' + r.invoices.map(function (i) {
+    if (r.invoices.length && !j.noBill) html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Invoices</div><div class="tl-hc">' + r.invoices.length + '</div></div>' + r.invoices.map(function (i) {
       return '<div class="fn-r" data-finv="' + esc(i.no) + '"><div class="tl-x"><div class="fn-t">#' + esc(i.no) + ' \u00b7 ' + esc(i.status) + '</div><div class="tl-s">' + esc(i.sent ? 'sent ' + i.sent : i.date) +
         (i.paid ? ' \u00b7 paid ' + money(i.paid, false) : '') + '</div></div><div class="fn-amt">' + money(i.total) + '</div></div>'; }).join('') + '</div>';
     $('#view').innerHTML = html;

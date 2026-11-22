@@ -30,7 +30,8 @@
     var m = String((e && e.error) || e || 'error');
     var plain = {needs_approval: 'Spencer has to approve it first', only_spencer: 'Only Spencer can approve invoices', note_required: 'Type a note for Hanna',
       no_lines: 'Add at least one line first', locked: 'This invoice was already sent, so it can\u2019t be changed', draft_exists: 'This job already has an open draft',
-      amount_required: 'Type an amount', desc_required: 'Type a description', pick_a_job: 'Pick a job or type who it\u2019s for', vendor_required: 'Type the vendor'};
+      amount_required: 'Type an amount', desc_required: 'Type a description', pick_a_job: 'Pick a job or type who it\u2019s for', vendor_required: 'Type the vendor',
+      not_billed_job: 'That job is set to Not billed, so it can\u2019t have an invoice'};
     return plain[m] || m.replace(/_/g, ' ');
   }
   function call(action, args) {
@@ -127,7 +128,7 @@
     if (appr.length) html += box('a', 'Approved \u2013 ready to send', appr.length, appr.map(invRow));
     if (drafts.length) html += box('d', 'Drafts', drafts.length, drafts.map(invRow), {limit: 8});
     if (sent.length) html += box('s', 'Sent \u2013 waiting for payment', sent.length, sent.map(invRow));
-    var jobs = (d.jobs || []).filter(function (j) { return j.ready && !j.draft; });
+    var jobs = (d.jobs || []).filter(function (j) { return j.ready && !j.draft && !j.noBill; });
     if (jobs.length) html += box('j', 'Ready to bill \u2013 no invoice yet', jobs.length, jobs.map(function (j) {
       return row('data-finstart="' + esc(j.job) + '"', esc(j.job), j.ready + ' item' + (j.ready === 1 ? '' : 's') + ' \u00b7 <span style="color:var(--blue)">Start invoice \u203a</span>', money(j.readyAmt)); }));
     var done = by(['Paid', 'Void']);
@@ -143,7 +144,7 @@
     var act = function (j) { return !/complete|closed|lost|cancel/i.test(j.status || ''); };
     var line = function (j) {
       var bits = [j.type || '', j.budget ? Math.round(100 * (j.cost || 0) / j.budget) + '% of budget' : '', j.pctDone !== null && j.pctDone !== undefined ? j.pctDone + '% done' : '',
-        j.ready ? j.ready + ' to bill' : ''].filter(Boolean);
+        j.noBill ? 'not billed' : (j.ready ? j.ready + ' to bill' : '')].filter(Boolean);
       var over = j.budget && j.cost > j.budget, warn = j.budget && j.pctDone !== null && j.pctDone !== undefined && (100 * j.cost / j.budget) - j.pctDone > 15;
       return row('data-finjob="' + esc(j.job) + '"', esc(j.job), (over ? '<span style="color:var(--red)">over budget</span> \u00b7 ' : (warn ? '<span style="color:var(--orange)">spending ahead of progress</span> \u00b7 ' : '')) +
         esc(bits.join(' \u00b7 ') || (j.status || '')), money(j.cost || 0, false), j.budget ? 'of ' + money(j.budget, false) : 'spent');
@@ -352,7 +353,7 @@
   }
 
   function newInvoice(job) {
-    var jobs = (F.d && F.d.jobs) || [];
+    var jobs = ((F.d && F.d.jobs) || []).filter(function (j) { return !j.noBill; });
     A.sheet('<h2>New invoice</h2><label>Job</label><select id="fn-j"><option value="">\u2014 one-off customer (no job) \u2014</option>' + jobs.map(function (j) {
       return '<option value="' + esc(j.job) + '"' + (j.job === job ? ' selected' : '') + '>' + esc(j.job) + (j.draft ? ' (has draft #' + esc(j.draft) + ')' : (j.ready ? ' \u2013 ' + j.ready + ' ready' : '')) + '</option>'; }).join('') + '</select>' +
       '<div id="fn-oneoff"><label>Bill to</label><input id="fn-b" placeholder="Customer name"><label>Address</label><textarea id="fn-a" style="min-height:50px"></textarea></div>' +
