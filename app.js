@@ -879,7 +879,7 @@
         '<div class="two"><div><label>Due</label><input type="date" id="f-due" value="' + usToIso(t.due) + '"></div>' +
         '<div><label>Status</label><select id="f-status">' + options(L['Status'], t.status) + '</select></div></div>' +
         (window.E10K.remField ? window.E10K.remField(isNew ? null : t) : '') +
-        '<label>Phase / category</label><select id="f-phase">' + options(L['Phase / Category'], t.phase, true) + '</select>'
+        '<label>Phase / category</label><select id="f-phase">' + options((L['Phase / Category'] || []).concat(t.phase && (L['Phase / Category'] || []).indexOf(t.phase) < 0 ? [t.phase] : []), t.phase, true) + '</select>'
       : (isNew ? '<label>Who <span class="sub">(tap one or more)</span></label>' + whoPicker('f-who', m.name) +
         '<label>Priority</label><select id="f-pri">' + options(['High', 'Medium', 'Low'], 'Medium') + '</select>' +
         '<label>Due</label><input type="date" id="f-due">' : '')) +
@@ -899,6 +899,7 @@
         f.owners = getWho(); f.owner = f.owners.join(', '); f.priority = $('#f-pri').value; f.due = isoToUs($('#f-due').value);
         if (!f.owners.length) return toast('Pick who it\u2019s for');
         if (!f.job) return toast('Pick the job');
+        if (t.phase && f.job === t.job) f.phase = t.phase;   // added inside a job section on the Jobs tab
       }
       if ($('#f-notes')) f.notes = $('#f-notes').value.trim();
       if (isNew) {

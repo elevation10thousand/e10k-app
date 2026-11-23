@@ -83,28 +83,30 @@
     var curStage = (r.checks.filter(function (c) { return !c.done; })[0] || {}).stage;
     stages.forEach(function (s) {
       var items = by[s], d = items.filter(function (c) { return c.done; }).length, open = J.stageOpen[s] !== undefined ? J.stageOpen[s] : s === curStage;
-      var tasksHere = openTasks(job).filter(function (t) { return t.phase === s || t.area === s; }).length;
+      var secTasks = openTasks(job).filter(function (t) { return t.phase === s; }), tasksHere = secTasks.length;
       var added = items.every(function (c) { return c.added; }) ? items[0].added.replace(/\/\d{4}$/, '') : '';
-      html += '<div class="card" style="padding:10px 12px"><div class="row tap" data-jstage="' + esc(s) + '"><div class="grow"><b>' + esc(s) + '</b>' +
+      html += '<div class="card" style="padding:10px 12px"><div class="row tap" data-jstage="' + esc(s) + '" style="-webkit-user-select:none;user-select:none;-webkit-touch-callout:none"><div class="grow"><b>' + esc(s) + '</b>' +
         (added ? ' <span class="sub">\u00b7 added ' + esc(added) + '</span>' : '') +
-        (tasksHere ? ' <span class="sub">\u00b7 ' + tasksHere + ' open</span>' : '') + '</div><span class="sub"><b style="color:' + (d === items.length ? 'var(--green)' : 'var(--text)') + '">' +
+        (tasksHere ? ' <span class="sub">\u00b7 ' + tasksHere + ' to-do' + (tasksHere > 1 ? 's' : '') + '</span>' : '') + '</div><span class="sub"><b style="color:' + (d === items.length ? 'var(--green)' : 'var(--text)') + '">' +
         Math.round(100 * d / items.length) + '%</b> \u00b7 ' + d + '/' + items.length + (open ? ' \u25b4' : ' \u25be') + '</span>' +
         (r.canEdit ? '<span data-jsecmenu="' + esc(s) + '" style="padding:0 2px 0 12px;font-size:18px;color:var(--dim)">\u22ef</span>' : '') + '</div>' +
         bar(items.length ? 100 * d / items.length : 0, d === items.length ? 'var(--green)' : '#4a8fe7');
       if (open) html += items.map(function (c) {
-        return '<div class="row tap" data-jcheck="' + esc(c.id) + '" style="padding:9px 0;border-top:1px solid #222"><span style="font-size:20px;width:30px">' + (c.done ? '\u2705' : '\u2b1c') + '</span>' +
+        return '<div class="row tap" data-jcheck="' + esc(c.id) + '" style="padding:9px 0;border-top:1px solid #222;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none"><span style="font-size:20px;width:30px">' + (c.done ? '\u2705' : '\u2b1c') + '</span>' +
           '<div class="grow"><div' + (c.done ? ' style="color:var(--dim);text-decoration:line-through"' : '') + '>' + (c.kind === 'Inspection' ? '\ud83d\udd0d ' : '') + esc(c.item) + '</div>' +
-          (c.done ? '<div class="sub">' + esc([c.by, c.date, c.result].filter(Boolean).join(' \u00b7 ')) + '</div>' : '') + '</div>' +
-          (r.canEdit ? '<span data-jstepmenu="' + esc(c.id) + '" style="padding:0 2px 0 12px;font-size:18px;color:var(--dim)">\u22ef</span>' : '') + '</div>';
-      }).join('') + (r.canEdit ? '<div class="sub tap" data-jaddstep="' + esc(s) + '" style="padding:9px 0 2px;border-top:1px solid #222">+ Add a step</div>' : '');
+          (c.done ? '<div class="sub">' + esc([c.by, c.date, c.result].filter(Boolean).join(' \u00b7 ')) + '</div>' : '') + '</div></div>';
+      }).join('') + todoRows(secTasks) +
+        '<div class="row" style="gap:18px;padding:9px 0 2px;border-top:1px solid #222">' + (r.canEdit ? '<span class="sub tap" data-jaddstep="' + esc(s) + '">+ Add a step</span>' : '') +
+        '<span class="sub tap" data-jaddtodo="' + esc(s) + '">+ Add a to-do</span></div>';
       html += '</div>';
     });
-    if (r.canEdit) html += '<button class="btn" data-jaddsec style="width:100%;margin-top:6px">+ Add section</button>';
-    // tasks
-    var ts = openTasks(job);
-    html += '<div class="row" style="margin-top:16px;align-items:center"><h3 class="grow" style="margin:0">To do' + (ts.length ? ' \u00b7 ' + ts.length : '') + '</h3>' +
+    if (r.canEdit) html += '<button class="btn" data-jaddsec style="width:100%;margin-top:6px">+ Add section</button>' +
+      (stages.length ? '<div class="sub" style="margin-top:6px">Tip: press and hold a step or section to add or delete.</div>' : '');
+    // to-dos that aren't in a section (11/22: to-dos live inside their section above)
+    var ts = openTasks(job).filter(function (t) { return stages.indexOf(t.phase) < 0; });
+    html += '<div class="row" style="margin-top:16px;align-items:center"><h3 class="grow" style="margin:0">' + (stages.length ? 'Other to-dos' : 'To do') + (ts.length ? ' \u00b7 ' + ts.length : '') + '</h3>' +
       '<button class="btn" data-jobtask style="padding:6px 12px">+ Add task</button></div>' +
-      (ts.length ? ts.map(function (t) { return A.taskCard(t); }).join('') : '<div class="sub">Nothing open on this job.</div>');
+      (ts.length ? ts.map(function (t) { return A.taskCard(t); }).join('') : '<div class="sub">Nothing else open on this job.</div>');
     // on site
     html += '<h3 style="margin-top:16px">On site' + (owner() ? '' : ' \u00b7 your hours') + '</h3>';
     if (!r.days.length) html += '<div class="sub">No hours logged yet.</div>';
@@ -131,6 +133,12 @@
   }
 
   function render() { if (J.open) renderJob(); else renderList(); }
+  function todoRows(list) {
+    return list.map(function (t) {
+      return '<div class="row tap" data-task="' + esc(t.id) + '" style="padding:9px 0;border-top:1px solid #222"><span style="font-size:17px;width:30px">\ud83d\udcdd</span><div class="grow"><div>' + esc(t.task) + '</div>' +
+        '<div class="sub">' + esc([t.owner, t.status !== 'Not Started' ? t.status : '', t.due ? 'due ' + A.shortD(t.due) : ''].filter(Boolean).join(' \u00b7 ')) + '</div></div></div>';
+    }).join('');
+  }
 
   function check(id) {
     var r = J.cur; if (!r) return;
@@ -177,14 +185,14 @@
       $('#js-name').value = s.name; $('#js-steps').value = s.steps.map(function (x) { return (x.kind === 'Inspection' ? '? ' : '') + x.item; }).join('\n');
     };
   }
-  function addStepSheet(stage) {
+  function addStepSheet(stage, after) {
     A.sheet('<h2>Add a step</h2><div class="sub">' + esc(stage) + '</div><label>Step</label><input id="jst-i">' +
       '<div class="chips" style="margin-top:8px"><button class="chip on" data-jkind="Step">Step</button><button class="chip" data-jkind="Inspection">\ud83d\udd0d Inspection</button></div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="go">Add</button></div>', function (a) {
       if (a !== 'go') return A.closeSheet();
       var it = $('#jst-i').value.trim(); if (!it) return toast('Type the step');
       var k = document.querySelector('[data-jkind].on').getAttribute('data-jkind');
-      A.closeSheet(); J.stageOpen[stage] = true; edit({op: 'addStep', stage: stage, item: it, kind: k}, 'Step added');
+      A.closeSheet(); J.stageOpen[stage] = true; edit({op: 'addStep', stage: stage, item: it, kind: k, after: after || ''}, 'Step added');
     });
   }
   function secMenu(stage) {
@@ -195,6 +203,55 @@
       var n = $('#jsm-n').value.trim(); A.closeSheet(); if (n && n !== stage) edit({op: 'renameSection', stage: stage, name: n}, 'Renamed');
     });
   }
+  // press and hold (Spencer 11/22): a step -> add a step after it, add a to-do, rename, delete; a section -> same for the section
+  function stepHold(id) {
+    var c = (J.cur.checks || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    var ed = J.cur.canEdit;
+    A.sheet('<h2>' + esc(c.item) + '</h2><div class="sub">' + esc(c.stage) + '</div><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' +
+      (ed ? '<button class="btn" data-act="after">+ Add a step after this</button>' : '') +
+      '<button class="btn" data-act="todo">+ Add a to-do in ' + esc(c.stage) + '</button>' +
+      (ed ? '<button class="btn" data-act="ren">Rename</button><button class="btn" data-act="rm" style="color:var(--red)">Delete this step</button>' : '') +
+      '<button class="btn" data-act="x">Cancel</button></div>', function (a) {
+      if (a === 'after') return addStepSheet(c.stage, c.id);
+      if (a === 'todo') { A.closeSheet(); return A.newTask({job: J.open, entity: 'E10K', phase: c.stage}); }
+      if (a === 'ren') return stepMenu(id);
+      if (a === 'rm') { if (!confirm('Delete \u201c' + c.item + '\u201d?')) return; A.closeSheet(); return edit({op: 'removeStep', id: id}, 'Step deleted'); }
+      A.closeSheet();
+    });
+  }
+  function secHold(stage) {
+    var ed = J.cur.canEdit;
+    A.sheet('<h2>' + esc(stage) + '</h2><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' +
+      (ed ? '<button class="btn" data-act="step">+ Add a step</button>' : '') +
+      '<button class="btn" data-act="todo">+ Add a to-do</button>' +
+      (ed ? '<button class="btn" data-act="sec">+ Add a new section</button><button class="btn" data-act="ren">Rename or delete section</button>' : '') +
+      '<button class="btn" data-act="x">Cancel</button></div>', function (a) {
+      if (a === 'step') return addStepSheet(stage);
+      if (a === 'todo') { A.closeSheet(); return A.newTask({job: J.open, entity: 'E10K', phase: stage}); }
+      if (a === 'sec') return sectionSheet();
+      if (a === 'ren') return secMenu(stage);
+      A.closeSheet();
+    });
+  }
+  var LP = {t: 0, at: 0};
+  function holdTarget(e) { return A.S.tab === 'jobs' && J.cur && e.target.closest && e.target.closest('[data-jcheck],[data-jstage]'); }
+  function hold(el) {
+    if (Date.now() - LP.at < 800) return; LP.at = Date.now();
+    if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) {}
+    if (el.hasAttribute('data-jcheck')) stepHold(el.getAttribute('data-jcheck')); else secHold(el.getAttribute('data-jstage'));
+  }
+  document.addEventListener('touchstart', function (e) {
+    var el = holdTarget(e); clearTimeout(LP.t); if (!el) return;
+    var p = e.touches[0]; LP.x = p.clientX; LP.y = p.clientY;
+    LP.t = setTimeout(function () { hold(el); }, 550);
+  }, {passive: true});
+  document.addEventListener('touchmove', function (e) { var p = e.touches[0]; if (Math.abs(p.clientX - LP.x) > 10 || Math.abs(p.clientY - LP.y) > 10) clearTimeout(LP.t); }, {passive: true});
+  document.addEventListener('touchend', function () { clearTimeout(LP.t); }, {passive: true});
+  document.addEventListener('contextmenu', function (e) { var el = holdTarget(e); if (!el) return; e.preventDefault(); clearTimeout(LP.t); hold(el); });
+  document.addEventListener('click', function (e) {   // the tap that ends a long press must not also check the step off
+    if (Date.now() - LP.at < 800 && holdTarget(e)) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
   function stepMenu(id) {
     var c = (J.cur.checks || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
     A.sheet('<h2>Step</h2><div class="sub">' + esc(c.stage) + '</div><label>Rename</label><input id="jsp-n" value="' + esc(c.item) + '">' +
@@ -212,7 +269,7 @@
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'jobs') return;
     var sm = e.target.closest('[data-jsecmenu]'); if (sm) { e.stopPropagation(); return secMenu(sm.getAttribute('data-jsecmenu')); }
-    var pm = e.target.closest('[data-jstepmenu]'); if (pm) { e.stopPropagation(); return stepMenu(pm.getAttribute('data-jstepmenu')); }
+    var td = e.target.closest('[data-jaddtodo]'); if (td) return A.newTask({job: J.open, entity: 'E10K', phase: td.getAttribute('data-jaddtodo')});
     var as = e.target.closest('[data-jaddstep]'); if (as) return addStepSheet(as.getAttribute('data-jaddstep'));
     if (e.target.closest('[data-jaddsec]')) return sectionSheet();
     var t = e.target.closest('[data-jobopen]'); if (t) return openJob(t.getAttribute('data-jobopen'));
