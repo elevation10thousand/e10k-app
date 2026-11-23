@@ -160,7 +160,7 @@
       '<div class="row"><div class="grow"><div class="title">' + esc(x.identified || x.said || 'Part from shop') + (x.qty && String(x.qty) !== '1' ? ' <span class="sub">\u00b7 x' + esc(x.qty) + '</span>' : '') + '</div>' +
       '<div class="sub">' + esc([x.job, x.by + ' ' + A.shortD(x.date), x.photos ? x.photos + ' photo' + (x.photos > 1 ? 's' : '') : ''].filter(Boolean).join(' \u00b7 ')) + '</div>' +
       (x.identified && x.said && x.identified !== x.said ? '<div class="sub">"' + esc(String(x.said).slice(0, 80)) + '"</div>' : '') +
-      '</div><div style="text-align:right">' + (m.owner && x.total ? '<div class="title" style="font-size:15px">' + esc(money(x.total)) + '</div>' : '') +
+      '</div><div style="text-align:right">' + (x.total ? '<div class="title" style="font-size:15px">' + esc(money(x.total)) + '</div>' : '') +
       '<span class="pill ' + st.c + '">' + esc(st.t) + '</span></div></div></div>';
   }
   function renderShop() {
@@ -222,7 +222,11 @@
       (x.said ? '<div class="notes">' + esc(x.by) + ' said: "' + esc(x.said) + '"</div>' : '') +
       (x.photos ? '<div class="photos" id="sh-ph"><div class="sub">Loading photo\u2026</div></div>' : '') +
       (m.owner ? (x.samNotes || x.source ? '<h3>Sam\u2019s price check</h3><div class="card" style="white-space:pre-wrap;font-size:14px">' + linkify([x.source, x.samNotes].filter(Boolean).join('\n')) + '</div>' :
-        (x.status === 'Pricing' ? '<div class="sub" style="margin-top:8px">Sam is identifying and pricing this\u2026</div>' : '')) : '') +
+        (x.status === 'Pricing' ? '<div class="sub" style="margin-top:8px">Sam is identifying and pricing this\u2026</div>' : '')) :
+        // crew (Spencer 11/22): the store price Sam looked up, nothing about billing
+        (x.unit || x.total ? '<h3>Store price</h3><div class="card" style="font-size:14px">' + (x.unit ? esc(money(x.unit)) + ' each' + (x.qty && String(x.qty) !== '1' ? ' \u00d7 ' + esc(x.qty) + ' = <b>' + esc(money(x.total)) + '</b>' : '') : '<b>' + esc(money(x.total)) + '</b>') +
+          (x.source ? '<div class="sub" style="white-space:pre-wrap;margin-top:4px">' + linkify(x.source) + '</div>' : '') + '</div>' :
+          (x.status === 'Pricing' ? '<div class="sub" style="margin-top:8px">Sam is looking up the store price\u2026</div>' : ''))) +
       (x.ownerNotes ? '<div class="sub">' + esc(x.ownerNotes) + '</div>' : '') +
       (canOk ? '<label>Description for the job cost</label><input id="sh-what" value="' + esc(x.identified || x.said || '') + '">' +
         '<div class="two"><div><label>Unit price $</label><input id="sh-unit" inputmode="decimal" value="' + esc(String(x.unit || '').replace(/[$,]/g, '')) + '"></div>' +

@@ -767,7 +767,7 @@
   function findTask(id) { return (S.data.tasks || []).find(function (t) { return t.id === id; }); }
 
   function openTask(id) {
-    if (id === 'CHAT') { if (window.E10K.openChat) window.E10K.openChat(); return; }
+    if (/^CHAT/.test(id)) { if (window.E10K.openChat) window.E10K.openChat(id === 'CHAT' ? 'team' : id.slice(5)); return; }   // CHAT-<key> = private chat
     if (/^INVOICE-/.test(id)) { if (window.E10K.openInvoice) window.E10K.openInvoice(id.slice(8)); return; }
     if (/^BID-/.test(id)) { if (window.E10K.openBid) window.E10K.openBid(id.slice(4)); return; }
     if (/^ASKSAM/.test(id)) { if (window.E10K.openAsk) window.E10K.openAsk({person: id.slice(7) || me().name}); return; }

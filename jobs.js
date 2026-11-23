@@ -214,6 +214,21 @@
       A.closeSheet();
     });
   }
+  function check(id) {
+    var r = J.cur; if (!r) return;
+    var c = r.checks.filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    var me = A.me().name;
+    if (c.done && !owner() && c.by !== me) return toast('Checked off by ' + c.by + ' \u2013 only they or the office can undo it');
+    var was = {done: c.done, by: c.by, date: c.date};
+    c.done = !c.done; c.by = c.done ? me : ''; c.date = c.done ? A.todayStr() : ''; render();
+    A.api('jobs.check', {fields: {job: J.open, id: id, done: c.done}}).then(function (x) {
+      if (!x.ok) { Object.assign(c, was); render(); return toast(x.error === 'not_yours' ? 'Only the person who checked it (or the office) can undo it' : 'Didn\u2019t save'); }
+      if (J.cur === r) { r.checks = x.checks; render(); }
+      (J.list || []).forEach(function (j) { if (j.name === J.open) { j.pct = x.summary.pct; j.done = x.summary.done; j.stage = x.summary.stage; } }); ls.set('jobsList', J.list);
+      if (x.summary.pct === 100) toast('\ud83c\udf89 Checklist complete');
+    }).catch(function () { Object.assign(c, was); render(); toast('Needs a signal to check it off'); });
+  }
+
   // ---------- editing sections and steps (owners + people allowed to add jobs) ----------
   function edit(f, okMsg) {
     f.job = J.open;
