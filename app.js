@@ -1088,6 +1088,17 @@
       if (f.job === 'Shop / Yard' && $('#h-wo') && $('#h-wo').value) f.workedOn = $('#h-wo').value;
       var ce = $('#h-cat');
       if (ce) { if (!ce.value) { ce.focus(); return toast('Pick what part of the job you worked on'); } f.category = ce.value; ls.set('lastCat:' + f.job, ce.value); }
+      var se = $('#h-sec');
+      if (se) {
+        if (!se.value) { se.focus(); return toast('Pick which part of the job (or Not sure)'); }
+        if (se.value === '__new') {
+          var nm = $('#h-secnew').value.replace(/\s+/g, ' ').trim(); if (!nm) { $('#h-secnew').focus(); return toast('Name the new part of the job'); }
+          f.section = nm; f.newSection = true;
+          var js = S.data.jobSections || (S.data.jobSections = {}), lst = js[f.job] || (js[f.job] = []);
+          if (!lst.some(function (x) { return x.toLowerCase() === nm.toLowerCase(); })) lst.push(nm);
+        } else if (se.value !== '__none') f.section = se.value;
+        ls.set('lastSec:' + f.job, f.section || '');
+      }
       if (!f.start || !f.end) return toast('Fill in start and end time');
       var lines = Array.prototype.slice.call(document.querySelectorAll('#h-mlist .mline'));
       for (var i = 0; i < lines.length; i++) {
@@ -1144,6 +1155,16 @@
     function drawCat() {
       var jn = $('#h-job').value, j = S.data.jobs.filter(function (x) { return x.name === jn; })[0], w = $('#h-catw');
       if (!w) return;
+      var secs = (S.data.jobSections || {})[jn] || [];
+      if (secs.length) {   // Spencer 11/23: one pick - the work section (it carries the budget category)
+        var last = ls.get('lastSec:' + jn, '');
+        w.innerHTML = '<label>Which part of the job?</label><select id="h-sec"><option value="">Pick one</option>' +
+          secs.map(function (x) { return '<option' + (x === last ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') +
+          '<option value="__none">Not sure / general</option><option value="__new">+ New part of the job\u2026</option></select>' +
+          '<div id="h-secnw" style="display:none"><input id="h-secnew" maxlength="60" placeholder="e.g. Spillway rock"></div>';
+        $('#h-sec').onchange = function () { $('#h-secnw').style.display = this.value === '__new' ? 'block' : 'none'; if (this.value === '__new') $('#h-secnew').focus(); };
+        return;
+      }
       var cats = j && j.cats;
       w.innerHTML = cats && cats.length ? '<label>What part of the job?</label><select id="h-cat">' + options(cats, ls.get('lastCat:' + jn, ''), true) + '</select>' : '';
     }

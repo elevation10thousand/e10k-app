@@ -97,6 +97,8 @@
       '<label>Who ran it</label>' + opSelect('mc-op', l.operator) +
       (metered ? '<label>Hour meter now</label><input id="mc-me" inputmode="decimal" placeholder="' + (l.meterStart ? 'started at ' + esc(fmtH(l.meterStart)) : '') + '">'
         : '<label>Hours on it <span class="sub">(hours, not miles)</span></label><input id="mc-h" inputmode="decimal" placeholder="e.g. 6.5">') +
+      (((A.S.data.jobSections || {})[l.job] || []).length ? '<label>Which part of the job? <span class="sub">(optional)</span></label><select id="mc-sec"><option value="">Same as their hours that day</option>' +
+        A.S.data.jobSections[l.job].map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>' : '') +
       '<label>Notes <span class="sub">(optional)</span></label><input id="mc-n">' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save">Close out</button></div>' +
       '<div class="btns"><button class="btn" data-act="cancel" style="font-size:13px">Started by mistake? Cancel it</button></div>';
@@ -109,6 +111,7 @@
       }
       if (act !== 'save') return A.closeSheet();
       var f = {id: l.id, operator: $('#mc-op').value, notes: $('#mc-n').value.trim()}, hrs;
+      if ($('#mc-sec') && $('#mc-sec').value) f.section = $('#mc-sec').value;
       if (metered) {
         var v = $('#mc-me').value.trim();
         if (!v || isNaN(+v)) { $('#mc-me').focus(); return toast('Enter the hour meter'); }

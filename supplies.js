@@ -182,6 +182,16 @@
   }
   function findShop(id) { return (SHOP.items || []).filter(function (x) { return x.id === id; })[0]; }
 
+  // Spencer 11/23: materials can land in a work section of the job (optional)
+  function secPick(id, job) {
+    var secs = ((A.S.data.jobSections || {})[job]) || [];
+    return secs.length ? '<label>Which part of the job? <span class="sub">(optional)</span></label><select id="' + id + '"><option value="">Not sure</option>' +
+      secs.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select>' : '';
+  }
+  function wireSecPick(jobSel, boxId, selId) {
+    var draw = function () { var b = document.getElementById(boxId); if (b) b.innerHTML = secPick(selId, $(jobSel).value); };
+    $(jobSel).addEventListener('change', draw); draw();
+  }
   function shopForm() {
     var jobs = (A.S.data.jobs || []).map(function (j) { return j.name; }), photos = [];
     var html = '<h2>Used from shop</h2>' +
@@ -189,6 +199,7 @@
         return '<option' + (j === ls.get('lastJob', '') ? ' selected' : '') + '>' + esc(j) + '</option>'; }).join('') + '</select>' +
       '<label>What is it?</label><textarea id="su-said" style="min-height:70px" placeholder="Tap the mic: 2 inch PVC 90s, a 10 ft stick of 4 inch SDR pipe, 3 hydraulic hose fittings\u2026"></textarea>' +
       '<label>How many</label><input id="su-qty" inputmode="decimal" value="1">' +
+      '<div id="su-secw"></div>' +
       '<label>For one of our machines? <span class="sub">(optional)</span></label><select id="su-mach"><option value="">No</option>' +
         (A.S.data.machines || []).map(function (x) { return '<option>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
       '<label>Photo of the part (helps Sam get it right)</label><input type="file" id="su-ph" accept="image/*" capture="environment" multiple><div class="photos" id="su-ph-prev"></div>' +
@@ -196,7 +207,7 @@
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Send</button></div>';
     A.sheet(html, function (act) {
       if (act !== 'save') return A.closeSheet();
-      var f = {job: $('#su-job').value, said: $('#su-said').value.trim(), qty: $('#su-qty').value.trim() || '1', photos: photos, clientId: A.uid(), machine: $('#su-mach').value};
+      var f = {job: $('#su-job').value, said: $('#su-said').value.trim(), qty: $('#su-qty').value.trim() || '1', photos: photos, clientId: A.uid(), machine: $('#su-mach').value, section: $('#su-sec') ? $('#su-sec').value : ''};
       if (!f.job) return toast('Pick the job');
       if (!f.said && !photos.length) return toast('Describe it or add a photo');
       ls.set('lastJob', f.job);
@@ -205,6 +216,7 @@
       A.enqueue('shop.add', {fields: f});
       A.closeSheet(); render(true); toast('Sent \u2013 Sam will price it');
     });
+    wireSecPick('#su-job', 'su-secw', 'su-sec');
     $('#su-ph').onchange = function (e) {
       Array.prototype.forEach.call(e.target.files, function (file) {
         A.shrink(file).then(function (d) {
@@ -350,6 +362,7 @@
         return '<button class="chip' + (i === 0 ? ' on' : '') + '" data-paid="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') + '</div>' +
       '<label>Fuel? Which machine, truck or tank <span class="sub">(optional)</span></label><select id="rc-fuel"><option value="">Not fuel</option>' +
         ((A.S.data.machines || []).map(function (x) { return x.name; }).concat(['Fuel trailer', 'Shop diesel tank', 'Shop gas tank', 'Gas cans'])).map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('') + '</select>' +
+      '<div id="rc-secw"></div>' +
       '<label>Parts or repair for a machine? <span class="sub">(optional)</span></label><select id="rc-mach"><option value="">No</option>' +
         (A.S.data.machines || []).map(function (x) { return '<option>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
       '<label>Note (optional)</label><input id="rc-note" placeholder="e.g. half of this was for the shop">' +
@@ -360,7 +373,7 @@
       if (!photos.length) return toast('Take a photo of the receipt');
       var fuelFor = $('#rc-fuel').value, note = $('#rc-note').value.trim();
       if (fuelFor) note = 'Fuel for: ' + fuelFor + (note ? '. ' + note : '');
-      var f = {job: $('#rc-job').value, paidWith: paid, note: note, photos: photos, clientId: A.uid(), machine: $('#rc-mach').value};
+      var f = {job: $('#rc-job').value, paidWith: paid, note: note, photos: photos, clientId: A.uid(), machine: $('#rc-mach').value, section: $('#rc-sec') ? $('#rc-sec').value : ''};
       if (!f.job) return toast('Pick the job');
       ls.set('lastJob', f.job);
       RC.items = [{id: 'RC-' + f.clientId.slice(0, 8), uploaded: A.todayStr(), by: A.me().name, job: f.job, paidWith: paid, note: f.note, photos: photos.length, status: 'Reading'}].concat(RC.items || []);
@@ -372,6 +385,7 @@
       var b = e.target.closest('[data-paid]'); if (!b) return; e.stopPropagation(); paid = b.getAttribute('data-paid');
       Array.prototype.forEach.call(document.querySelectorAll('#rc-paid .chip'), function (x) { x.classList.toggle('on', x === b); });
     };
+    wireSecPick('#rc-job', 'rc-secw', 'rc-sec');
     $('#rc-ph').onchange = function (e) {
       Array.prototype.forEach.call(e.target.files, function (file) {
         A.shrink(file).then(function (d) { photos.push({data: d, type: 'image/jpeg'}); var im = document.createElement('img'); im.src = d; $('#rc-ph-prev').appendChild(im); })

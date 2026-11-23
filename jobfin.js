@@ -97,6 +97,53 @@
     return html;
   }
   function csvCell(v) { v = v === null || v === undefined ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  // ---------- cost by section (Spencer 11/23): crew hours + pay, machine hours + our cost, materials, per work section ----------
+  function secHtml(r) {
+    var sc = r.sectionCosts; if (!sc || !sc.sections.length) return '';
+    var rows = sc.sections.map(function (x) {
+      var bits = [x.crewHrs ? 'crew ' + hrs(x.crewHrs) + ' ' + money(x.labor, false) : '', x.machineHrs ? 'machines ' + hrs(x.machineHrs) + ' ' + money(x.machineCost, false) + (x.machineUnknownHrs ? ' (+' + hrs(x.machineUnknownHrs) + ' no cost rate)' : '') : '',
+        x.materials ? 'materials ' + money(x.materials, false) : ''].filter(Boolean);
+      return '<div class="fn-r" data-jfsec="' + esc(x.name) + '" style="flex-direction:column;gap:2px"><div style="display:flex;gap:8px;width:100%"><div class="tl-x"><div class="fn-t">' + esc(x.name) +
+        (x.tracking ? ' <span class="tl-s">\u00b7 tracking</span>' : '') + '</div></div><div class="fn-amt">' + (x.total ? money(x.total, false) : '\u2013') + '</div></div>' +
+        '<div class="tl-s">' + (bits.length ? bits.join(' \u00b7 ') : 'nothing logged yet') + '</div>' +
+        (x.none ? '<div class="tl-s" style="color:var(--orange)">tap to sort these into sections</div>' :
+          '<div class="tl-s"' + (x.cat ? '' : ' style="color:var(--orange)"') + '>' + (x.cat ? 'counts toward ' + esc(x.cat) : 'not linked to a budget category \u2013 tap to link') + '</div>') + '</div>';
+    });
+    return '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Cost by section</div><div class="tl-hc">for bidding the next one</div></div>' + rows.join('') +
+      '<div class="tl-hs">Crew at their pay, machines at our cost per hour, plus materials tagged to the section. Fuel and repairs are inside the machine cost.</div></div>';
+  }
+  function secSheet(name) {
+    var r = JF.cur, sc = r && r.sectionCosts, x = sc && sc.sections.filter(function (s) { return s.name === name; })[0]; if (!x) return;
+    var others = sc.sections.filter(function (s) { return !s.none && s.name !== name; }).map(function (s) { return s.name; });
+    var html = '<h2>' + esc(x.name) + '</h2><div class="sub">' + (x.total ? money(x.total) + ' so far' : 'Nothing logged yet') + '</div>';
+    if (x.people.length) html += '<h3>Crew</h3><div class="card" style="padding:6px 12px">' + x.people.map(function (p) { return '<div class="kv">' + esc(p.person) + ': ' + hrs(p.hrs) + '</div>'; }).join('') +
+      '<div class="kv"><b>' + hrs(x.crewHrs) + ' \u00b7 ' + money(x.labor) + '</b></div></div>';
+    if (x.machines.length) html += '<h3>Machines</h3><div class="card" style="padding:6px 12px">' + x.machines.map(function (m) {
+      return '<div class="kv">' + esc(m.machine) + ': ' + hrs(m.hrs) + (m.noRate ? ' <span class="sub">(no cost per hour set)</span>' : ' \u00b7 ' + money(m.cost)) + '</div>'; }).join('') + '</div>';
+    if (x.materials) html += '<h3>Materials</h3><div class="card" style="padding:6px 12px"><div class="kv">' + money(x.materials) + '</div></div>';
+    if (!x.none) html += '<h3>Counts toward budget</h3><select id="jfs-cat"><option value="">Not linked</option>' + sc.budgetCats.map(function (c) {
+      return '<option' + (c === x.cat ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>' +
+      '<div class="btns"><button class="btn primary" data-act="link">Save link</button></div>';
+    if (x.entries.length) html += '<h3>Entries</h3>' + x.entries.slice().reverse().map(function (en, i) {
+      return '<div class="row" style="padding:6px 0;border-top:1px solid #222;align-items:center"><div class="grow"><div style="font-size:14px">' + esc(en.what) + '</div><div class="sub">' + esc(en.date) +
+        (en.amount !== null && en.amount !== undefined ? ' \u00b7 ' + money(en.amount) : '') + '</div></div><button class="btn" data-act="mv:' + (x.entries.length - 1 - i) + '" style="padding:4px 10px">Move</button></div>';
+    }).join('');
+    html += '<div class="btns"><button class="btn" data-act="x">Close</button></div>';
+    A.sheet(html, function (a) {
+      if (a === 'link') { var c = $('#jfs-cat').value; A.closeSheet(); return call('sec.link', {job: JF.job, section: x.name, category: c}).then(function (res) { set(res); toast(c ? 'Counts toward ' + c : 'Unlinked'); }).catch(function () {}); }
+      if (a && a.indexOf('mv:') === 0) {
+        var en = x.entries[+a.slice(3)];
+        return A.sheet('<h2>Move to</h2><div class="sub">' + esc(en.what) + '</div><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' +
+          others.map(function (o, k) { return '<button class="btn" data-act="s' + k + '">' + esc(o) + '</button>'; }).join('') +
+          (x.none ? '' : '<button class="btn" data-act="none">General / not sorted</button>') + '<button class="btn" data-act="x">Cancel</button></div>', function (b) {
+          A.closeSheet(); if (!b || b === 'x') return;
+          var to = b === 'none' ? '' : others[+b.slice(1)];
+          call('sec.assign', {kind: en.kind, id: en.id, section: to}).then(function (res) { set(res); toast('Moved to ' + (to || 'not sorted')); }).catch(function () {});
+        });
+      }
+      A.closeSheet();
+    });
+  }
   function downloadHours() {
     var r = JF.cur, rows = [['Date', 'Type', 'Person / Machine', 'Operator', 'Hours', 'Start', 'End', 'Meter start', 'Meter end', 'Cost $', 'Work done / notes', 'Category']];
     (r.days || []).slice().reverse().forEach(function (d) {
@@ -169,6 +216,7 @@
       (rows.length ? rows.join('') : '<div class="tl-hs">Nothing spent or budgeted yet.</div>') +
       '<div class="fn-bar"><button class="btn primary" data-jfa="budget">Edit budget</button><button class="btn" data-jfa="all">' + (JF.showAll ? 'Hide empty' : 'Show all categories') + '</button></div></div>';
     html += hoursHtml(r);
+    html += secHtml(r);
     if (!j.noBill) html += chart(r);
     // change orders (not on not-billed jobs)
     if (!j.noBill) html += '<div class="tl-box"><div class="tl-h"><div class="tl-ht">Change orders</div><div class="tl-hc">' + (s.coApproved ? money(s.coApproved, false) + ' approved' : r.changeOrders.length) + '</div></div>' +
@@ -369,6 +417,7 @@
     var t, r = JF.cur;
     if ((t = e.target.closest('[data-jfback]'))) { history.back(); return; }
     if (!r) return;
+    if ((t = e.target.closest('[data-jfsec]'))) return secSheet(t.getAttribute('data-jfsec'));
     if (JF.busy && (e.target.closest('[data-jfa]') || e.target.closest('[data-jfck]'))) return toast('One moment\u2026');
     if ((t = e.target.closest('[data-jfa]'))) {
       var a = t.getAttribute('data-jfa');
