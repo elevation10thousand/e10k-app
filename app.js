@@ -1074,6 +1074,8 @@
       '<div id="h-catw"></div>' +
       '<div class="two"><div><label>Start</label><input type="time" id="h-start" value="' + (pre ? pre.start : '07:00') + '"></div>' +
       '<div><label>End</label><input type="time" id="h-end" value="' + (pre ? pre.end : '') + '"></div></div>' +
+      '<div id="h-wow" style="display:none"><label>Fixing a machine? <span class="sub">(optional)</span></label><select id="h-wo"><option value="">No</option>' +
+        (S.data.machines || []).map(function (x) { return '<option>' + esc(x.name) + '</option>'; }).join('') + '</select></div>' +
       '<div class="sub" style="margin-top:8px">Machine hours go on the Equipment tab (Start / Close out).</div>' +
       '<label>What you did</label><textarea id="h-work" placeholder="Type, or tap 🎤 to talk"></textarea>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
@@ -1083,6 +1085,7 @@
         work: $('#h-work').value.trim(), machines: []};
       if (m.owner) f.person = $('#h-person').value;
       if (!f.job) return toast('Pick the job');
+      if (f.job === 'Shop / Yard' && $('#h-wo') && $('#h-wo').value) f.workedOn = $('#h-wo').value;
       var ce = $('#h-cat');
       if (ce) { if (!ce.value) { ce.focus(); return toast('Pick what part of the job you worked on'); } f.category = ce.value; ls.set('lastCat:' + f.job, ce.value); }
       if (!f.start || !f.end) return toast('Fill in start and end time');
@@ -1145,6 +1148,8 @@
       w.innerHTML = cats && cats.length ? '<label>What part of the job?</label><select id="h-cat">' + options(cats, ls.get('lastCat:' + jn, ''), true) + '</select>' : '';
     }
     $('#h-job').addEventListener('change', drawCat); drawCat();
+    var drawWo = function () { var w = $('#h-wow'); if (w) w.style.display = $('#h-job').value === 'Shop / Yard' ? 'block' : 'none'; };
+    $('#h-job').addEventListener('change', drawWo); drawWo();
   }
 
   // Spencer 11/18: machine hours only on the Equipment tab. After hours are saved, check the machine side:

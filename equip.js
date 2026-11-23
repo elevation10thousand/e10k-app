@@ -50,7 +50,7 @@
   function render(noFetch) {
     if (EQ.open) return renderMachine(EQ.open, noFetch);
     if (eqView() === 'fuel') return A.renderFuel('<h2>Equipment</h2>' + viewChips(), noFetch);
-    var html = '<h2>Equipment</h2>' + viewChips() + (A.mlogBanner ? A.mlogBanner('equip') : '');
+    var html = '<h2>Equipment</h2>' + viewChips() + (A.mcostChip ? A.mcostChip() : '') + (A.mlogBanner ? A.mlogBanner('equip') : '');
     if (!EQ.list) html += '<div class="empty">Loading\u2026</div>';
     else {
       var rank = {overdue: 0, soon: 1, nohours: 2, ok: 3}, fr = {DOWN: 0, Problem: 1, Watch: 2};
@@ -150,9 +150,11 @@
           (p.qty ? ' \u00b7 ' + esc(p.qty) : '') + (p.spec ? ' \u00b7 ' + esc(p.spec) : '') + '</div>';
       }).join('') + '</div>';
     }
+    if (A.mcostCardHtml) html += A.mcostCardHtml(key);
     if (A.me().owner) html += '<h3>Cost (parts + labor)</h3><div id="eq-cost">' + costHtml(EQ.hist[key]) + '</div>';
     html += '<h3>History</h3><div id="eq-hist">' + histHtml(EQ.hist[key]) + '</div>';
     $('#view').innerHTML = html;
+    if (!noFetch && A.mcostLoad) A.mcostLoad(key);
     if (!noFetch && navigator.onLine) {
       A.api('equip.history', {machine: key}).then(function (r) {
         if (!r.ok) return; EQ.hist[key] = r;

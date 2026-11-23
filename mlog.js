@@ -96,7 +96,7 @@
     var html = '<h2>Close out ' + esc(l.machine) + '</h2><div class="kv">' + line(l) + '</div>' +
       '<label>Who ran it</label>' + opSelect('mc-op', l.operator) +
       (metered ? '<label>Hour meter now</label><input id="mc-me" inputmode="decimal" placeholder="' + (l.meterStart ? 'started at ' + esc(fmtH(l.meterStart)) : '') + '">'
-        : '<label>Hours on it</label><input id="mc-h" inputmode="decimal" placeholder="e.g. 6.5">') +
+        : '<label>Hours on it <span class="sub">(hours, not miles)</span></label><input id="mc-h" inputmode="decimal" placeholder="e.g. 6.5">') +
       '<label>Notes <span class="sub">(optional)</span></label><input id="mc-n">' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn ok" data-act="save">Close out</button></div>' +
       '<div class="btns"><button class="btn" data-act="cancel" style="font-size:13px">Started by mistake? Cancel it</button></div>';
