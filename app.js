@@ -649,14 +649,16 @@
     return (S.data.tasks || []).filter(function (t) { if (t.status === 'Done' || t.status === 'Waiting' || !isMine(t, m)) return false; var n = tDays(t); return n !== null && n <= 0; }).length;
   }
 
+  function inSection(t) { var st = (S.data.jobStages || {})[t.job]; return !!(st && t.phase && st.indexOf(t.phase) >= 0 && t.status !== 'Done'); }
   function renderTasks() {
-    var all = S.data.tasks || [], m = me(), qq = S.filter.trim(), later = [];
+    var all = S.data.tasks || [], m = me(), qq = S.filter.trim(), later = [], onJobs = 0;
     var list = all.filter(function (t) {
       if (!qq && isLater(t) && (S.tab !== 'mine' || isMine(t, m))) { later.push(t); return false; }
       if (S.tab === 'mine') {
         if (!isMine(t, m)) return false;
         return t.status !== 'Done' || t.completed === todayStr();
       }
+      if (S.tab === 'all' && inSection(t)) { onJobs++; return false; }   // job-section to-dos live on the Jobs tab (11/22)
       return t.status !== 'Done';
     });
     var ents = {}; list.forEach(function (t) { ents[t.entity || 'Other'] = 1; });
@@ -670,6 +672,7 @@
     });
     var mode = ls.get('taskView', 'job');
     var html = (S.tab === 'mine' ? briefingCard() + alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
+    if (onJobs) html += '<div class="tl-hint" data-gojobs style="cursor:pointer">\ud83d\udccb ' + onJobs + ' to-do' + (onJobs > 1 ? 's are' : ' is') + ' inside job sections \u2192 <u>Jobs tab</u></div>';
     html += '<div class="tl-seg"><button class="' + (mode === 'job' ? 'on' : '') + '" data-tlview="job">By job</button><button class="' + (mode === 'when' ? 'on' : '') + '" data-tlview="when">By when</button></div>';
     if (names.length > 1) html += '<div class="chips">' + ['All'].concat(names).map(function (c) {
       return '<button class="chip ' + (S.chip === c ? 'on' : '') + '" data-chip="' + esc(c) + '">' + esc(c) + '</button>'; }).join('') + '</div>';
@@ -863,6 +866,12 @@
       return '<option ' + (o === cur ? 'selected' : '') + '>' + esc(o) + '</option>'; }).join('');
   }
 
+  // the job's work sections first (Jobs tab, 11/22), then the usual categories; never drops the task's current one
+  function phaseChoices(t) {
+    var L = (S.data.lists || {})['Phase / Category'] || [], st = ((S.data.jobStages || {})[t.job] || []).slice(), out = [];
+    st.concat(L).concat(t.phase ? [t.phase] : []).forEach(function (x) { if (x && out.indexOf(x) < 0) out.push(x); });
+    return out;
+  }
   function taskForm(t, preset) {
     var m = me(), L = S.data.lists || {}, isNew = !t;
     t = t || Object.assign({entity: 'E10K', owner: m.name, priority: 'Medium', status: 'Not Started'}, preset || {});
@@ -879,7 +888,7 @@
         '<div class="two"><div><label>Due</label><input type="date" id="f-due" value="' + usToIso(t.due) + '"></div>' +
         '<div><label>Status</label><select id="f-status">' + options(L['Status'], t.status) + '</select></div></div>' +
         (window.E10K.remField ? window.E10K.remField(isNew ? null : t) : '') +
-        '<label>Phase / category</label><select id="f-phase">' + options((L['Phase / Category'] || []).concat(t.phase && (L['Phase / Category'] || []).indexOf(t.phase) < 0 ? [t.phase] : []), t.phase, true) + '</select>'
+        '<label>Section / category</label><select id="f-phase">' + options(phaseChoices(t), t.phase, true) + '</select>'
       : (isNew ? '<label>Who <span class="sub">(tap one or more)</span></label>' + whoPicker('f-who', m.name) +
         '<label>Priority</label><select id="f-pri">' + options(['High', 'Medium', 'Low'], 'Medium') + '</select>' +
         '<label>Due</label><input type="date" id="f-due">' : '')) +

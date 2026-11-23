@@ -204,7 +204,7 @@
         '</div><span data-jfstagemenu="' + esc(st) + '" style="padding:2px 4px 2px 12px;font-size:18px;color:var(--dim)">\u22ef</span></div>';
       if (open) items.forEach(function (c) {
         html += '<div class="tl-r' + (c.done ? ' is-done' : '') + '"><span class="tl-ckw" data-jfck="' + esc(c.id) + '"><span class="tl-ck"></span></span>' +
-          '<div class="tl-x" data-jfitem="' + esc(c.id) + '"><div class="tl-t">' + (c.kind === 'Inspection' ? '\ud83d\udd0e ' : '') + esc(c.item) + '</div><div class="tl-s">' +
+          '<div class="tl-x" data-jfitem="' + esc(c.id) + '"><div class="tl-t">' + (c.kind === 'Inspection' ? '\ud83d\udd0e ' : c.kind === 'To-do' ? '\ud83d\udcdd ' : '') + esc(c.item) + '</div><div class="tl-s">' +
           esc([c.done ? 'done ' + c.date + (c.by ? ' by ' + c.by : '') : '', c.inspector ? c.inspector : '', c.result, c.notes].filter(Boolean).join(' \u00b7 ')) + '</div></div></div>';
       });
     });
@@ -392,6 +392,7 @@
       c.done = !c.done; draw();   // instant, then save
       return call('job.check', {job: r.job.job, id: c.id, done: c.done}).then(set, function () { c.done = !c.done; draw(); });
     }
+    if ((t = e.target.closest('[data-jfitem]')) && /^T:/.test(t.getAttribute('data-jfitem'))) return A.openTask(t.getAttribute('data-jfitem').slice(2));   // a section to-do = its task
     if ((t = e.target.closest('[data-jfitem]'))) return itemSheet(r.checklist.filter(function (x) { return x.id === t.getAttribute('data-jfitem'); })[0]);
   });
 

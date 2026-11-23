@@ -74,39 +74,45 @@
         '<div class="sub" style="margin-top:4px">Open the full job finances \u203a</div></div>';
     }
     if (!r) { $('#view').innerHTML = html + '<div class="empty">Loading\u2026</div>'; return; }
-    // progress
+    // progress: steps + to-dos filed in a section are all work items (Spencer 11/22: one % everywhere; a to-do is the task itself)
     var stages = [], by = {};
     r.checks.forEach(function (c) { if (!by[c.stage]) { by[c.stage] = []; stages.push(c.stage); } by[c.stage].push(c); });
-    var done = r.checks.filter(function (c) { return c.done; }).length, pct = r.checks.length ? Math.round(100 * done / r.checks.length) : null;
-    html += '<h3 style="margin-top:16px">Progress' + (pct !== null ? ' \u00b7 ' + pct + '%' : '') + '</h3>';
-    if (!stages.length) html += '<div class="sub">No checklist on this job yet.' + (r.canEdit ? ' Add a section below (e.g. Driveway, Leachfield) and its steps.' : '') + '</div>';
+    var tasks = jobTasks(job, r), secT = {};
+    tasks.forEach(function (t) { if (stages.indexOf(t.phase) >= 0) (secT[t.phase] = secT[t.phase] || []).push(t); });
+    var allItems = r.checks.length + tasks.filter(function (t) { return stages.indexOf(t.phase) >= 0; }).length;
+    var allDone = r.checks.filter(function (c) { return c.done; }).length + tasks.filter(function (t) { return stages.indexOf(t.phase) >= 0 && t.status === 'Done'; }).length;
+    var pct = allItems ? Math.round(100 * allDone / allItems) : null;
+    html += '<h3 style="margin-top:16px">Work' + (pct !== null ? ' \u00b7 ' + pct + '%' : '') + '</h3>';
+    if (!stages.length) html += '<div class="sub">No work sections on this job yet.' + (r.canEdit ? ' Add one below (e.g. Driveway, Leachfield) and its steps.' : '') + '</div>';
     var curStage = (r.checks.filter(function (c) { return !c.done; })[0] || {}).stage;
+    var NOSEL = '-webkit-user-select:none;user-select:none;-webkit-touch-callout:none';
     stages.forEach(function (s) {
-      var items = by[s], d = items.filter(function (c) { return c.done; }).length, open = J.stageOpen[s] !== undefined ? J.stageOpen[s] : s === curStage;
-      var secTasks = openTasks(job).filter(function (t) { return t.phase === s; }), tasksHere = secTasks.length;
+      var items = by[s], ts = (secT[s] || []).slice().sort(function (a, b) { return (a.status === 'Done') - (b.status === 'Done'); });
+      var n = items.length + ts.length, d = items.filter(function (c) { return c.done; }).length + ts.filter(function (t) { return t.status === 'Done'; }).length;
+      var open = J.stageOpen[s] !== undefined ? J.stageOpen[s] : s === curStage, openT = ts.filter(function (t) { return t.status !== 'Done'; }).length;
       var added = items.every(function (c) { return c.added; }) ? items[0].added.replace(/\/\d{4}$/, '') : '';
-      html += '<div class="card" style="padding:10px 12px"><div class="row tap" data-jstage="' + esc(s) + '" style="-webkit-user-select:none;user-select:none;-webkit-touch-callout:none"><div class="grow"><b>' + esc(s) + '</b>' +
+      html += '<div class="card" style="padding:10px 12px"><div class="row tap" data-jstage="' + esc(s) + '" style="' + NOSEL + '"><div class="grow"><b>' + esc(s) + '</b>' +
         (added ? ' <span class="sub">\u00b7 added ' + esc(added) + '</span>' : '') +
-        (tasksHere ? ' <span class="sub">\u00b7 ' + tasksHere + ' to-do' + (tasksHere > 1 ? 's' : '') + '</span>' : '') + '</div><span class="sub"><b style="color:' + (d === items.length ? 'var(--green)' : 'var(--text)') + '">' +
-        Math.round(100 * d / items.length) + '%</b> \u00b7 ' + d + '/' + items.length + (open ? ' \u25b4' : ' \u25be') + '</span>' +
+        (openT ? ' <span class="sub">\u00b7 ' + openT + ' to-do' + (openT > 1 ? 's' : '') + '</span>' : '') + '</div><span class="sub"><b style="color:' + (d === n ? 'var(--green)' : 'var(--text)') + '">' +
+        Math.round(100 * d / n) + '%</b> \u00b7 ' + d + '/' + n + (open ? ' \u25b4' : ' \u25be') + '</span>' +
         (r.canEdit ? '<span data-jsecmenu="' + esc(s) + '" style="padding:0 2px 0 12px;font-size:18px;color:var(--dim)">\u22ef</span>' : '') + '</div>' +
-        bar(items.length ? 100 * d / items.length : 0, d === items.length ? 'var(--green)' : '#4a8fe7');
+        bar(n ? 100 * d / n : 0, d === n ? 'var(--green)' : '#4a8fe7');
       if (open) html += items.map(function (c) {
-        return '<div class="row tap" data-jcheck="' + esc(c.id) + '" style="padding:9px 0;border-top:1px solid #222;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none"><span style="font-size:20px;width:30px">' + (c.done ? '\u2705' : '\u2b1c') + '</span>' +
+        return '<div class="row tap" data-jcheck="' + esc(c.id) + '" style="padding:9px 0;border-top:1px solid #222;' + NOSEL + '"><span style="font-size:20px;width:30px">' + (c.done ? '\u2705' : '\u2b1c') + '</span>' +
           '<div class="grow"><div' + (c.done ? ' style="color:var(--dim);text-decoration:line-through"' : '') + '>' + (c.kind === 'Inspection' ? '\ud83d\udd0d ' : '') + esc(c.item) + '</div>' +
           (c.done ? '<div class="sub">' + esc([c.by, c.date, c.result].filter(Boolean).join(' \u00b7 ')) + '</div>' : '') + '</div></div>';
-      }).join('') + todoRows(secTasks) +
+      }).join('') + ts.map(todoRow).join('') +
         '<div class="row" style="gap:18px;padding:9px 0 2px;border-top:1px solid #222">' + (r.canEdit ? '<span class="sub tap" data-jaddstep="' + esc(s) + '">+ Add a step</span>' : '') +
         '<span class="sub tap" data-jaddtodo="' + esc(s) + '">+ Add a to-do</span></div>';
       html += '</div>';
     });
-    if (r.canEdit) html += '<button class="btn" data-jaddsec style="width:100%;margin-top:6px">+ Add section</button>' +
-      (stages.length ? '<div class="sub" style="margin-top:6px">Tip: press and hold a step or section to add or delete.</div>' : '');
-    // to-dos that aren't in a section (11/22: to-dos live inside their section above)
-    var ts = openTasks(job).filter(function (t) { return stages.indexOf(t.phase) < 0; });
-    html += '<div class="row" style="margin-top:16px;align-items:center"><h3 class="grow" style="margin:0">' + (stages.length ? 'Other to-dos' : 'To do') + (ts.length ? ' \u00b7 ' + ts.length : '') + '</h3>' +
+    if (r.canEdit) html += '<button class="btn" data-jaddsec style="width:100%;margin-top:6px">+ Add section</button>';
+    if (stages.length) html += '<div class="sub" style="margin-top:6px">Tip: press and hold a step, to-do or section for more (add, move, delegate, delete).</div>';
+    // to-dos that aren't in a section
+    var other = tasks.filter(function (t) { return stages.indexOf(t.phase) < 0 && t.status !== 'Done'; });
+    html += '<div class="row" style="margin-top:16px;align-items:center"><h3 class="grow" style="margin:0">' + (stages.length ? 'Other to-dos' : 'To do') + (other.length ? ' \u00b7 ' + other.length : '') + '</h3>' +
       '<button class="btn" data-jobtask style="padding:6px 12px">+ Add task</button></div>' +
-      (ts.length ? ts.map(function (t) { return A.taskCard(t); }).join('') : '<div class="sub">Nothing else open on this job.</div>');
+      (other.length ? '<div class="card" style="padding:2px 12px">' + other.map(todoRow).join('') + '</div>' : '<div class="sub">Nothing else open on this job.</div>');
     // on site
     html += '<h3 style="margin-top:16px">On site' + (owner() ? '' : ' \u00b7 your hours') + '</h3>';
     if (!r.days.length) html += '<div class="sub">No hours logged yet.</div>';
@@ -133,28 +139,81 @@
   }
 
   function render() { if (J.open) renderJob(); else renderList(); }
-  function todoRows(list) {
-    return list.map(function (t) {
-      return '<div class="row tap" data-task="' + esc(t.id) + '" style="padding:9px 0;border-top:1px solid #222"><span style="font-size:17px;width:30px">\ud83d\udcdd</span><div class="grow"><div>' + esc(t.task) + '</div>' +
-        '<div class="sub">' + esc([t.owner, t.status !== 'Not Started' ? t.status : '', t.due ? 'due ' + A.shortD(t.due) : ''].filter(Boolean).join(' \u00b7 ')) + '</div></div></div>';
-    }).join('');
+  /** The job's tasks: the server's list (has older done ones in sections) refreshed with the phone's own copy (instant changes). */
+  function jobTasks(job, r) {
+    var mine = {}, out = [];
+    ((A.S.data && A.S.data.tasks) || []).forEach(function (t) { if (t.job === job) mine[t.id] = t; });
+    (r.tasks || []).forEach(function (t) { var l = mine[t.id]; out.push(l || t); delete mine[t.id]; });
+    Object.keys(mine).forEach(function (k) { out.push(mine[k]); });
+    return out;
   }
-
-  function check(id) {
-    var r = J.cur; if (!r) return;
-    var c = r.checks.filter(function (x) { return x.id === id; })[0]; if (!c) return;
-    var me = A.me().name;
-    if (c.done && !owner() && c.by !== me) return toast('Checked off by ' + c.by + ' \u2013 only they or the office can undo it');
-    var was = {done: c.done, by: c.by, date: c.date};
-    c.done = !c.done; c.by = c.done ? me : ''; c.date = c.done ? A.todayStr() : ''; render();
-    A.api('jobs.check', {fields: {job: J.open, id: id, done: c.done}}).then(function (x) {
-      if (!x.ok) { Object.assign(c, was); render(); return toast(x.error === 'not_yours' ? 'Only the person who checked it (or the office) can undo it' : 'Didn\u2019t save'); }
-      if (J.cur === r) { r.checks = x.checks; render(); }
-      (J.list || []).forEach(function (j) { if (j.name === J.open) { j.pct = x.summary.pct; j.done = x.summary.done; j.stage = x.summary.stage; } }); ls.set('jobsList', J.list);
-      if (x.summary.pct === 100) toast('\ud83c\udf89 Checklist complete');
-    }).catch(function () { Object.assign(c, was); render(); toast('Needs a signal to check it off'); });
+  function todoRow(t) {
+    var done = t.status === 'Done', who = t.owner ? esc(t.owner) : '<span style="color:#ffc069">Unassigned</span>';
+    return '<div class="row tap" data-jtodo="' + esc(t.id) + '" style="padding:9px 0;border-top:1px solid #222;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none">' +
+      '<span data-jtodock="' + esc(t.id) + '" style="font-size:20px;width:30px">' + (done ? '\u2705' : '\u2b1c') + '</span>' +
+      '<div class="grow"><div' + (done ? ' style="color:var(--dim);text-decoration:line-through"' : '') + '>\ud83d\udcdd ' + esc(t.task) + '</div>' +
+      '<div class="sub">' + who + (t.status && !done && t.status !== 'Not Started' ? ' \u00b7 ' + esc(t.status) : '') + (t.due && !done ? ' \u00b7 due ' + esc(A.shortD(t.due)) : '') +
+      (done && t.completed ? ' \u00b7 done ' + esc(t.completed) : '') + '</div>' +
+      (!t.owner && !done ? '<div style="margin-top:6px;display:flex;gap:8px"><button class="btn" data-jtake="' + esc(t.id) + '" style="padding:4px 10px">I\u2019ll take it</button>' +
+        '<button class="btn" data-jdeleg="' + esc(t.id) + '" style="padding:4px 10px">Delegate\u2026</button></div>' : '') + '</div></div>';
   }
-
+  function findT(id) { return jobTasks(J.open, J.cur || {}).filter(function (t) { return t.id === id; })[0]; }
+  function localT(t) {   // make sure the phone's copy has it, so the change shows everywhere at once
+    var L = A.S.data.tasks || (A.S.data.tasks = []), l = L.filter(function (x) { return x.id === t.id; })[0];
+    if (!l) { l = Object.assign({job: J.open, entity: 'E10K'}, t); L.push(l); }
+    return l;
+  }
+  function toggleTodo(id) {
+    var t = findT(id); if (!t) return;
+    var l = localT(t), done = l.status !== 'Done';
+    l.status = done ? 'Done' : 'In Progress'; l.completed = done ? A.todayStr() : '';
+    A.enqueue('task.update', {id: id, fields: {status: l.status}}); A.save(); render();
+    if (done) toast('Done \u2713');
+  }
+  function assign(id, who) {
+    var t = findT(id); if (!t) return;
+    var l = localT(t); l.owner = who;
+    A.enqueue('task.assign', {id: id, owners: [who]}); A.save(); render();
+    toast(who === A.me().name ? 'It\u2019s yours \u2013 it\u2019s in My Tasks' : 'Sent to ' + who);
+  }
+  function delegateSheet(id) {
+    var t = findT(id); if (!t) return;
+    var ppl = ((A.S.data && A.S.data.people) || []).filter(function (p) { return p && p !== A.me().name; });
+    A.sheet('<h2>Delegate</h2><div class="sub">' + esc(t.task) + '</div><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' +
+      ppl.map(function (p) { return '<button class="btn" data-act="p:' + esc(p) + '">' + esc(p) + '</button>'; }).join('') +
+      '<button class="btn" data-act="x">Cancel</button></div>', function (a) {
+      A.closeSheet(); if (a && a.indexOf('p:') === 0) assign(id, a.slice(2));
+    });
+  }
+  function moveSheet(id) {
+    var t = findT(id); if (!t || !J.cur) return;
+    var st = []; J.cur.checks.forEach(function (c) { if (st.indexOf(c.stage) < 0) st.push(c.stage); });
+    A.sheet('<h2>Move to section</h2><div class="sub">' + esc(t.task) + '</div><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">' +
+      st.map(function (s, i) { return '<button class="btn' + (s === t.phase ? ' primary' : '') + '" data-act="s' + i + '">' + esc(s) + '</button>'; }).join('') +
+      '<button class="btn" data-act="none">No section (Other to-dos)</button><button class="btn" data-act="x">Cancel</button></div>', function (a) {
+      A.closeSheet(); if (!a || a === 'x') return;
+      var ph = a === 'none' ? '' : st[+a.slice(1)]; if (ph === undefined || ph === t.phase) return;
+      var l = localT(t); l.phase = ph;
+      A.enqueue('task.update', {id: id, fields: {phase: ph}}); A.save(); render(); toast(ph ? 'Moved to ' + ph : 'Moved to Other to-dos');
+    });
+  }
+  function todoHold(id) {
+    var t = findT(id); if (!t) return;
+    A.sheet('<h2>' + esc(t.task) + '</h2><div class="sub">' + esc([t.phase, t.owner || 'Unassigned'].filter(Boolean).join(' \u00b7 ')) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><button class="btn" data-act="open">Open the task</button>' +
+      '<button class="btn" data-act="move">Move to section\u2026</button>' +
+      (t.owner !== A.me().name ? '<button class="btn" data-act="take">I\u2019ll take it</button>' : '') +
+      '<button class="btn" data-act="del">Delegate\u2026</button>' +
+      (t.phase ? '<button class="btn" data-act="todo">+ Add another to-do in ' + esc(t.phase) + '</button>' : '') +
+      '<button class="btn" data-act="x">Cancel</button></div>', function (a) {
+      if (a === 'open') { A.closeSheet(); return setTimeout(function () { A.openTask(id); }, 50); }
+      if (a === 'move') return moveSheet(id);
+      if (a === 'take') { A.closeSheet(); return assign(id, A.me().name); }
+      if (a === 'del') return delegateSheet(id);
+      if (a === 'todo') { A.closeSheet(); return A.newTask({job: J.open, entity: 'E10K', phase: t.phase}); }
+      A.closeSheet();
+    });
+  }
   // ---------- editing sections and steps (owners + people allowed to add jobs) ----------
   function edit(f, okMsg) {
     f.job = J.open;
@@ -234,11 +293,13 @@
     });
   }
   var LP = {t: 0, at: 0};
-  function holdTarget(e) { return A.S.tab === 'jobs' && J.cur && e.target.closest && e.target.closest('[data-jcheck],[data-jstage]'); }
+  function holdTarget(e) { return A.S.tab === 'jobs' && J.cur && e.target.closest && e.target.closest('[data-jcheck],[data-jstage],[data-jtodo]'); }
   function hold(el) {
     if (Date.now() - LP.at < 800) return; LP.at = Date.now();
     if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) {}
-    if (el.hasAttribute('data-jcheck')) stepHold(el.getAttribute('data-jcheck')); else secHold(el.getAttribute('data-jstage'));
+    if (el.hasAttribute('data-jcheck')) stepHold(el.getAttribute('data-jcheck'));
+    else if (el.hasAttribute('data-jtodo')) todoHold(el.getAttribute('data-jtodo'));
+    else secHold(el.getAttribute('data-jstage'));
   }
   document.addEventListener('touchstart', function (e) {
     var el = holdTarget(e); clearTimeout(LP.t); if (!el) return;
@@ -267,8 +328,13 @@
   }, true);
 
   document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-gojobs]')) { A.S.tab = 'jobs'; ls.set('tab', 'jobs'); J.open = null; window.scrollTo(0, 0); A.navPush && A.navPush(); return A.render(); }
     if (A.S.tab !== 'jobs') return;
     var sm = e.target.closest('[data-jsecmenu]'); if (sm) { e.stopPropagation(); return secMenu(sm.getAttribute('data-jsecmenu')); }
+    var tk = e.target.closest('[data-jtake]'); if (tk) { e.stopPropagation(); return assign(tk.getAttribute('data-jtake'), A.me().name); }
+    var dg = e.target.closest('[data-jdeleg]'); if (dg) { e.stopPropagation(); return delegateSheet(dg.getAttribute('data-jdeleg')); }
+    var tc = e.target.closest('[data-jtodock]'); if (tc) { e.stopPropagation(); return toggleTodo(tc.getAttribute('data-jtodock')); }
+    var tr = e.target.closest('[data-jtodo]'); if (tr) { e.stopPropagation(); return A.openTask(tr.getAttribute('data-jtodo')); }
     var td = e.target.closest('[data-jaddtodo]'); if (td) return A.newTask({job: J.open, entity: 'E10K', phase: td.getAttribute('data-jaddtodo')});
     var as = e.target.closest('[data-jaddstep]'); if (as) return addStepSheet(as.getAttribute('data-jaddstep'));
     if (e.target.closest('[data-jaddsec]')) return sectionSheet();
