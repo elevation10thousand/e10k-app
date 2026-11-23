@@ -198,8 +198,9 @@
     stages.forEach(function (st) {
       var items = by[st], d = items.filter(function (c) { return c.done; }).length, open = JF.open[st] !== undefined ? JF.open[st] : (d < items.length && !JF.firstOpen && (JF.firstOpen = st));
       if (JF.open[st] === undefined && JF.firstOpen === st) open = true;
-      html += '<div class="fn-r" data-jfstage="' + esc(st) + '" style="background:#151515"><div class="tl-x"><div class="fn-t"><b>' + esc(st) + '</b></div></div><div class="fn-amt" style="font-weight:400">' +
-        (d === items.length ? '<span style="color:var(--green)">\u2713 done</span>' : d + ' of ' + items.length) + ' ' + (open ? '\u25b4' : '\u203a') +
+      html += '<div class="fn-r" data-jfstage="' + esc(st) + '" style="background:#151515"><div class="tl-x"><div class="fn-t"><b>' + esc(st) + '</b>' + (function () { var ad = items.every(function (c) { return /^Added \d/.test(c.notes || ''); }) ? String(items[0].notes).match(/^Added (\d{1,2}\/\d{1,2})/) : null;
+          return ad ? ' <span class="sub">\u00b7 added ' + ad[1] + '</span>' : ''; })() + '</div></div><div class="fn-amt" style="font-weight:400">' +
+        (d === items.length ? '<span style="color:var(--green)">\u2713 100%</span>' : Math.round(100 * d / items.length) + '% \u00b7 ' + d + ' of ' + items.length) + ' ' + (open ? '\u25b4' : '\u203a') +
         '</div><span data-jfstagemenu="' + esc(st) + '" style="padding:2px 4px 2px 12px;font-size:18px;color:var(--dim)">\u22ef</span></div>';
       if (open) items.forEach(function (c) {
         html += '<div class="tl-r' + (c.done ? ' is-done' : '') + '"><span class="tl-ckw" data-jfck="' + esc(c.id) + '"><span class="tl-ck"></span></span>' +

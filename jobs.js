@@ -79,21 +79,27 @@
     r.checks.forEach(function (c) { if (!by[c.stage]) { by[c.stage] = []; stages.push(c.stage); } by[c.stage].push(c); });
     var done = r.checks.filter(function (c) { return c.done; }).length, pct = r.checks.length ? Math.round(100 * done / r.checks.length) : null;
     html += '<h3 style="margin-top:16px">Progress' + (pct !== null ? ' \u00b7 ' + pct + '%' : '') + '</h3>';
-    if (!stages.length) html += '<div class="sub">No checklist on this job yet' + (owner() ? ' \u2013 set one up on the Finance job page.' : '.') + '</div>';
+    if (!stages.length) html += '<div class="sub">No checklist on this job yet.' + (r.canEdit ? ' Add a section below (e.g. Driveway, Leachfield) and its steps.' : '') + '</div>';
     var curStage = (r.checks.filter(function (c) { return !c.done; })[0] || {}).stage;
     stages.forEach(function (s) {
       var items = by[s], d = items.filter(function (c) { return c.done; }).length, open = J.stageOpen[s] !== undefined ? J.stageOpen[s] : s === curStage;
       var tasksHere = openTasks(job).filter(function (t) { return t.phase === s || t.area === s; }).length;
+      var added = items.every(function (c) { return c.added; }) ? items[0].added.replace(/\/\d{4}$/, '') : '';
       html += '<div class="card" style="padding:10px 12px"><div class="row tap" data-jstage="' + esc(s) + '"><div class="grow"><b>' + esc(s) + '</b>' +
-        (tasksHere ? ' <span class="sub">\u00b7 ' + tasksHere + ' open</span>' : '') + '</div><span class="sub">' + d + '/' + items.length + (open ? ' \u25b4' : ' \u25be') + '</span></div>' +
+        (added ? ' <span class="sub">\u00b7 added ' + esc(added) + '</span>' : '') +
+        (tasksHere ? ' <span class="sub">\u00b7 ' + tasksHere + ' open</span>' : '') + '</div><span class="sub"><b style="color:' + (d === items.length ? 'var(--green)' : 'var(--text)') + '">' +
+        Math.round(100 * d / items.length) + '%</b> \u00b7 ' + d + '/' + items.length + (open ? ' \u25b4' : ' \u25be') + '</span>' +
+        (r.canEdit ? '<span data-jsecmenu="' + esc(s) + '" style="padding:0 2px 0 12px;font-size:18px;color:var(--dim)">\u22ef</span>' : '') + '</div>' +
         bar(items.length ? 100 * d / items.length : 0, d === items.length ? 'var(--green)' : '#4a8fe7');
       if (open) html += items.map(function (c) {
         return '<div class="row tap" data-jcheck="' + esc(c.id) + '" style="padding:9px 0;border-top:1px solid #222"><span style="font-size:20px;width:30px">' + (c.done ? '\u2705' : '\u2b1c') + '</span>' +
           '<div class="grow"><div' + (c.done ? ' style="color:var(--dim);text-decoration:line-through"' : '') + '>' + (c.kind === 'Inspection' ? '\ud83d\udd0d ' : '') + esc(c.item) + '</div>' +
-          (c.done ? '<div class="sub">' + esc([c.by, c.date, c.result].filter(Boolean).join(' \u00b7 ')) + '</div>' : '') + '</div></div>';
-      }).join('');
+          (c.done ? '<div class="sub">' + esc([c.by, c.date, c.result].filter(Boolean).join(' \u00b7 ')) + '</div>' : '') + '</div>' +
+          (r.canEdit ? '<span data-jstepmenu="' + esc(c.id) + '" style="padding:0 2px 0 12px;font-size:18px;color:var(--dim)">\u22ef</span>' : '') + '</div>';
+      }).join('') + (r.canEdit ? '<div class="sub tap" data-jaddstep="' + esc(s) + '" style="padding:9px 0 2px;border-top:1px solid #222">+ Add a step</div>' : '');
       html += '</div>';
     });
+    if (r.canEdit) html += '<button class="btn" data-jaddsec style="width:100%;margin-top:6px">+ Add section</button>';
     // tasks
     var ts = openTasks(job);
     html += '<div class="row" style="margin-top:16px;align-items:center"><h3 class="grow" style="margin:0">To do' + (ts.length ? ' \u00b7 ' + ts.length : '') + '</h3>' +
@@ -141,8 +147,74 @@
     }).catch(function () { Object.assign(c, was); render(); toast('Needs a signal to check it off'); });
   }
 
+  // ---------- editing sections and steps (owners + people allowed to add jobs) ----------
+  function edit(f, okMsg) {
+    f.job = J.open;
+    return A.api('jobs.edit', {fields: f}).then(function (x) {
+      if (!x.ok) return toast({section_exists: 'There\u2019s already a section with that name', has_done_steps: 'It has checked-off steps \u2013 ask Spencer or Hanna',
+        steps_required: 'Add at least one step', name_required: 'Type a name', item_required: 'Type the step', not_allowed: 'Not allowed'}[x.error] || 'Didn\u2019t save');
+      if (J.cur) { J.cur.checks = x.checks; }
+      (J.list || []).forEach(function (j) { if (j.name === J.open) { j.pct = x.summary.pct; j.done = x.summary.done; j.total = x.summary.total; j.stage = x.summary.stage; } }); ls.set('jobsList', J.list);
+      render(); if (okMsg) toast(okMsg);
+    }).catch(function () { toast('Needs a signal'); });
+  }
+  function sectionSheet() {
+    var secs = (J.cur && J.cur.sections) || [];
+    A.sheet('<h2>Add a section</h2><div class="sub">Pick a ready-made one (you can change the steps), or start blank.</div>' +
+      '<label>Ready-made</label><select id="js-pre"><option value="">Blank \u2013 I\u2019ll type the steps</option>' +
+      secs.map(function (s, i) { return '<option value="' + i + '">' + esc(s.name + (s.from ? ' (' + s.from + ')' : '') + ' \u2013 ' + s.steps.length + ' steps') + '</option>'; }).join('') + '</select>' +
+      '<label>Section name</label><input id="js-name" placeholder="e.g. Leachfield">' +
+      '<label>Steps <span class="sub">(one per line; start a line with ? for an inspection)</span></label><textarea id="js-steps" rows="8" placeholder="Septic permit issued\nExcavate\n? Open-hole inspection\nBackfill and grade"></textarea>' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="go">Add section</button></div>', function (a) {
+      if (a !== 'go') return A.closeSheet();
+      var name = $('#js-name').value.trim(), steps = $('#js-steps').value.split('\n').map(function (l) { l = l.trim(); var insp = /^\?/.test(l);
+        return {item: l.replace(/^\?\s*/, ''), kind: insp ? 'Inspection' : 'Step'}; }).filter(function (s) { return s.item; });
+      if (!name) return toast('Type the section name'); if (!steps.length) return toast('Add at least one step');
+      A.closeSheet(); J.stageOpen[name] = true; edit({op: 'addSection', stage: name, steps: steps}, name + ' added');
+    });
+    $('#js-pre').onchange = function () {
+      var s = secs[+this.value]; if (!s) return;
+      $('#js-name').value = s.name; $('#js-steps').value = s.steps.map(function (x) { return (x.kind === 'Inspection' ? '? ' : '') + x.item; }).join('\n');
+    };
+  }
+  function addStepSheet(stage) {
+    A.sheet('<h2>Add a step</h2><div class="sub">' + esc(stage) + '</div><label>Step</label><input id="jst-i">' +
+      '<div class="chips" style="margin-top:8px"><button class="chip on" data-jkind="Step">Step</button><button class="chip" data-jkind="Inspection">\ud83d\udd0d Inspection</button></div>' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="go">Add</button></div>', function (a) {
+      if (a !== 'go') return A.closeSheet();
+      var it = $('#jst-i').value.trim(); if (!it) return toast('Type the step');
+      var k = document.querySelector('[data-jkind].on').getAttribute('data-jkind');
+      A.closeSheet(); J.stageOpen[stage] = true; edit({op: 'addStep', stage: stage, item: it, kind: k}, 'Step added');
+    });
+  }
+  function secMenu(stage) {
+    A.sheet('<h2>' + esc(stage) + '</h2><label>Rename</label><input id="jsm-n" value="' + esc(stage) + '">' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn" data-act="rm" style="color:var(--red)">Delete section</button><button class="btn primary" data-act="go">Save</button></div>', function (a) {
+      if (a === 'rm') { if (!confirm('Delete the whole ' + stage + ' section and its steps?')) return; A.closeSheet(); return edit({op: 'removeSection', stage: stage}, 'Section deleted'); }
+      if (a !== 'go') return A.closeSheet();
+      var n = $('#jsm-n').value.trim(); A.closeSheet(); if (n && n !== stage) edit({op: 'renameSection', stage: stage, name: n}, 'Renamed');
+    });
+  }
+  function stepMenu(id) {
+    var c = (J.cur.checks || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    A.sheet('<h2>Step</h2><div class="sub">' + esc(c.stage) + '</div><label>Rename</label><input id="jsp-n" value="' + esc(c.item) + '">' +
+      '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn" data-act="rm" style="color:var(--red)">Delete step</button><button class="btn primary" data-act="go">Save</button></div>', function (a) {
+      if (a === 'rm') { A.closeSheet(); return edit({op: 'removeStep', id: id}, 'Step deleted'); }
+      if (a !== 'go') return A.closeSheet();
+      var n = $('#jsp-n').value.trim(); A.closeSheet(); if (n && n !== c.item) edit({op: 'renameStep', id: id, item: n}, 'Renamed');
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var kc = e.target.closest && e.target.closest('[data-jkind]');
+    if (kc) { Array.prototype.forEach.call(document.querySelectorAll('[data-jkind]'), function (x) { x.classList.toggle('on', x === kc); }); return; }
+  }, true);
+
   document.addEventListener('click', function (e) {
     if (A.S.tab !== 'jobs') return;
+    var sm = e.target.closest('[data-jsecmenu]'); if (sm) { e.stopPropagation(); return secMenu(sm.getAttribute('data-jsecmenu')); }
+    var pm = e.target.closest('[data-jstepmenu]'); if (pm) { e.stopPropagation(); return stepMenu(pm.getAttribute('data-jstepmenu')); }
+    var as = e.target.closest('[data-jaddstep]'); if (as) return addStepSheet(as.getAttribute('data-jaddstep'));
+    if (e.target.closest('[data-jaddsec]')) return sectionSheet();
     var t = e.target.closest('[data-jobopen]'); if (t) return openJob(t.getAttribute('data-jobopen'));
     if (e.target.closest('[data-jobback]')) { history.back(); return; }
     if (e.target.closest('[data-jobfin]')) { if (A.openJob) A.openJob(J.open); return; }
