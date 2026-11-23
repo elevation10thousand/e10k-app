@@ -104,8 +104,7 @@
       '<label>Where <span class="sub">(optional)</span></label><input id="mt-w" placeholder="Address or place">' +
       '<label>Which calendar</label><select id="mt-c">' + CALS.map(function (c) {
         return '<option value="' + c[0] + '"' + (c[0] === (m.name === 'Hanna' ? 'Hanna' : 'E10K') ? ' selected' : '') + '>' + esc(c[1]) + '</option>'; }).join('') + '</select>' +
-      '<label>Job / deal <span class="sub">(optional)</span></label><input id="mt-j" list="mt-jl" value="' + esc(job || '') + '"><datalist id="mt-jl">' +
-      jobs.map(function (j) { return '<option value="' + esc(j) + '">'; }).join('') + '</datalist>' +
+      '<label>Job / deal <span class="sub">(optional)</span></label><input id="mt-j" autocomplete="off" value="' + esc(job || '') + '" placeholder="Tap to pick, or type">' +
       '<label>Notes <span class="sub">(optional)</span></label><textarea id="mt-n"></textarea>' +
       '<div class="sub">Goes on the calendar with your normal calendar reminders. Nobody else is invited.</div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="go">Put on calendar</button></div>', function (a) {
@@ -118,6 +117,7 @@
       A.enqueue('meet.create', {fields: f}); A.save(); A.closeSheet();
       toast('\ud83d\udcc5 Going on the ' + ({E10K: 'CONTRACTING', 'Real Estate': 'Real Estate', Spencer: 'Spencer', Hanna: 'Hanna'}[f.cal] || '') + ' calendar');
     });
+    if (A.jobPicker) A.jobPicker('mt-j', function () { return $('#mt-c').value === 'Real Estate' ? 'Real Estate' : 'E10K'; });
   };
 
   document.addEventListener('click', function (e) {

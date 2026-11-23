@@ -868,8 +868,7 @@
       (isNew && m.owner && window.E10K.meetingForm ? '<button class="btn" data-act="meeting" style="width:100%;margin-bottom:6px">\ud83d\udcc5 It\u2019s a meeting \u2013 put it on the calendar</button>' : '') +
       '<label>Task</label><textarea id="f-task" style="min-height:70px">' + esc(t.task || '') + '</textarea>' +
       (m.owner ? '<label>Business</label><select id="f-entity">' + options(L['Entity'] || ENTITY_ORDER, t.entity) + '</select>' +
-        '<label>Job / deal</label><input id="f-job" list="joblist" value="' + esc(t.job || '') + '" placeholder="Pick a job or type a deal">' +
-        '<datalist id="joblist">' + jobs.map(function (j) { return '<option value="' + esc(j) + '">'; }).join('') + '</datalist>'
+        '<label>Job / deal</label><input id="f-job" autocomplete="off" value="' + esc(t.job || '') + '" placeholder="Tap to pick, or type a deal">'
       : '<label>Job</label><select id="f-job">' + options(jobs, t.job || ls.get('lastJob', ''), true) + '</select>') +
       '<label>Area / room</label><input id="f-area" value="' + esc(t.area || '') + '">' +
       (m.owner ? '<label>Who <span class="sub">(tap one or more)</span></label>' + whoPicker('f-who', t.owner) +
@@ -916,6 +915,47 @@
       save(); closeSheet(); render();
     });
     var getWho = document.getElementById('f-who') ? wireWho('f-who') : function () { return ownersOf(t.owner); };
+    if (m.owner) jobPicker('f-job', function () { var e = $('#f-entity'); return e ? e.value : 'E10K'; });
+  }
+
+  // ---------- Job / deal picker (11/22): Android's built-in suggestion list (datalist) doesn't open reliably in the
+  // installed app, so this is our own list: tap the box to see every job/deal for the chosen business, type to narrow it.
+  function jobNames(entity) {
+    var D = S.data || {}, out = [], seen = {};
+    function add(n) { n = String(n || '').trim(); if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; out.push(n); } }
+    if (!entity || entity === 'E10K') (D.jobs || []).forEach(function (j) { add(j.name); });
+    if (entity === 'Real Estate') (D.leads || []).forEach(function (l) { if (!/closed|lost|dead/i.test(l.stage || l.status || '')) add(l.name); });
+    var rest = [];
+    (D.tasks || []).forEach(function (t) { if ((t.entity || 'E10K') === (entity || 'E10K') && t.status !== 'Done' && t.job && !seen[String(t.job).toLowerCase()]) rest.push(t.job); });
+    rest.sort().forEach(add);
+    return out;
+  }
+  function jobPicker(id, entityFn) {
+    var inp = document.getElementById(id); if (!inp) return;
+    var box = document.createElement('div');
+    box.style.cssText = 'display:none;max-height:260px;overflow-y:auto;border:1px solid #333;border-radius:10px;background:#1a1a1a;margin:4px 0 6px';
+    (inp.parentNode.classList && inp.parentNode.classList.contains('mic-wrap') ? inp.parentNode : inp).insertAdjacentElement('afterend', box);
+    var all = false;
+    function draw() {
+      var q = all ? '' : inp.value.trim().toLowerCase();
+      var names = jobNames(entityFn()).filter(function (n) { return !q || n.toLowerCase().indexOf(q) >= 0; });
+      box.innerHTML = names.length ? names.slice(0, 60).map(function (n) {
+        return '<div data-jp="' + esc(n) + '" style="padding:12px 14px;border-bottom:1px solid #262626">' + esc(n) + '</div>'; }).join('')
+        : '<div style="padding:12px 14px;color:#888">No match \u2013 what you typed will be used</div>';
+      box.style.display = 'block';
+    }
+    inp.addEventListener('focus', function () { all = true; draw(); });
+    inp.addEventListener('click', function () { all = true; draw(); });
+    inp.addEventListener('input', function () { all = false; draw(); });
+    inp.addEventListener('blur', function () { setTimeout(function () { box.style.display = 'none'; }, 250); });
+    box.addEventListener('mousedown', function (e) { e.preventDefault(); });   // keep focus so the tap lands
+    box.addEventListener('click', function (e) {
+      e.stopPropagation(); var it = e.target.closest('[data-jp]'); if (!it) return;
+      inp.value = it.getAttribute('data-jp'); box.style.display = 'none'; inp.blur();
+      inp.dispatchEvent(new Event('change', {bubbles: true}));
+    });
+    var ent = document.getElementById('f-entity');
+    if (ent && id === 'f-job') ent.addEventListener('change', function () { if (box.style.display === 'block') draw(); });
   }
 
   // ---------- hours ----------
@@ -1422,7 +1462,7 @@
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me, idb: idb, mach: mach,
     options: options, to12: to12, nowHM: nowHM, sinceTxt: sinceTxt, flush: flush, syncBadge: syncBadge,
-    seenBadge: seenBadge, authInfo: function () { return {api: API, token: TOKEN}; }, addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
+    seenBadge: seenBadge, jobPicker: jobPicker, authInfo: function () { return {api: API, token: TOKEN}; }, addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
