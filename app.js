@@ -149,10 +149,16 @@
       var temp = job.args && job.args.tempId;
       if (temp && S.data) {
         S.data.tasks = (S.data.tasks || []).filter(function (t) { return t.id !== temp || t.id === r.task.id; });
-        S.queue.forEach(function (q) { if (q.args && q.args.id === temp) q.args.id = r.task.id; });
+        S.queue.forEach(function (q) { if (q.args && q.args.id === temp) q.args.id = r.task.id; if (q.args && q.args.fields && q.args.fields.ref === temp) q.args.fields.ref = r.task.id; });
+        (S.data.reminders || []).forEach(function (x) { if (x.ref === temp) x.ref = r.task.id; });
         var nf = ls.get('seen', {}); if (nf[temp]) { nf[r.task.id] = 1; ls.set('seen', nf); }
       }
       upsertTask(r.task);
+    }
+    if (S.data && (r.reminder || r.meeting)) {   // reminders + meetings (reminders.js)
+      var rm = r.reminder || r.meeting, cidr = job.args && job.args.fields && job.args.fields.clientId;
+      S.data.reminders = (S.data.reminders || []).filter(function (x) { return x.id !== rm.id && !(rm.kind === 'Task' && x.kind === 'Task' && x.ref === rm.ref) && !(cidr && x.tmp === cidr); });
+      S.data.reminders.push(rm);
     }
     if (S.data && r.log) {
       var L = S.data.mlogOpen || (S.data.mlogOpen = []);
@@ -222,7 +228,7 @@
     }
   }
 
-  var JOB_NAMES = {'task.update': 'Task change', 'task.create': 'New task', 'task.assign': 'Assign', 'time.create': 'Hours', 'time.clockin': 'Clock in',
+  var JOB_NAMES = {'rem.set': 'Reminder', 'rem.act': 'Reminder', 'meet.create': 'Meeting', 'task.update': 'Task change', 'task.create': 'New task', 'task.assign': 'Assign', 'time.create': 'Hours', 'time.clockin': 'Clock in',
     'time.clockout': 'Clock out', 'walk.create': 'Walkthrough', 'equip.check': 'Pre-start check', 'equip.problem': 'Problem report', 'equip.log': 'Service log',
     'equip.hours': 'Hours update', 'equip.service': 'Back in service', 'equip.flag': 'Level change', 'supplies.add': 'Supplies item', 'supplies.update': 'Supplies change',
     'shop.add': 'Shop part', 'shop.decide': 'Shop part decision', 'receipt.add': 'Receipt', 'chat.send': 'Message', 'task.followup': 'Follow-up', 'sam.ask': 'Note to Sam', 'ask.send': 'Question for Sam',
@@ -479,7 +485,7 @@
       '<div class="row">' +
       '<span class="dot ' + esc(t.priority) + '"></span>' +
       '<div class="grow"><div class="title">' + esc(t.task) + '</div><div class="sub">' + esc(where) +
-      (S.tab === 'all' && t.owner ? ' \u00b7 ' + esc(t.owner) : '') + '</div></div>' +
+      (S.tab === 'all' && t.owner ? ' \u00b7 ' + esc(t.owner) : '') + (window.E10K.remBadge ? window.E10K.remBadge(t) : '') + '</div></div>' +
       '<span class="pill ' + (late(t) ? 'late' : statusCls(t.status)) + '">' + pill + '</span></div></div>';
   }
 
@@ -859,6 +865,7 @@
     t = t || {entity: 'E10K', owner: m.name, priority: 'Medium', status: 'Not Started'};
     var jobs = S.data.jobs.map(function (j) { return j.name; });
     var html = '<h2>' + (isNew ? 'New task' : 'Edit task') + '</h2>' +
+      (isNew && m.owner && window.E10K.meetingForm ? '<button class="btn" data-act="meeting" style="width:100%;margin-bottom:6px">\ud83d\udcc5 It\u2019s a meeting \u2013 put it on the calendar</button>' : '') +
       '<label>Task</label><textarea id="f-task" style="min-height:70px">' + esc(t.task || '') + '</textarea>' +
       (m.owner ? '<label>Business</label><select id="f-entity">' + options(L['Entity'] || ENTITY_ORDER, t.entity) + '</select>' +
         '<label>Job / deal</label><input id="f-job" list="joblist" value="' + esc(t.job || '') + '" placeholder="Pick a job or type a deal">' +
@@ -869,6 +876,7 @@
         '<label>Priority</label><select id="f-pri">' + options(L['Priority'] || ['High', 'Medium', 'Low'], t.priority) + '</select>' +
         '<div class="two"><div><label>Due</label><input type="date" id="f-due" value="' + usToIso(t.due) + '"></div>' +
         '<div><label>Status</label><select id="f-status">' + options(L['Status'], t.status) + '</select></div></div>' +
+        (window.E10K.remField ? window.E10K.remField(isNew ? null : t) : '') +
         '<label>Phase / category</label><select id="f-phase">' + options(L['Phase / Category'], t.phase, true) + '</select>'
       : (isNew ? '<label>Who <span class="sub">(tap one or more)</span></label>' + whoPicker('f-who', m.name) +
         '<label>Priority</label><select id="f-pri">' + options(['High', 'Medium', 'Low'], 'Medium') + '</select>' +
@@ -877,6 +885,7 @@
       (isNew ? '<label>Notes</label><textarea id="f-notes" placeholder="Optional"></textarea>' : '') +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
     sheet(html, function (act) {
+      if (act === 'meeting') return window.E10K.meetingForm($('#f-task').value.trim(), $('#f-job').value.trim());
       if (act !== 'save') return closeSheet();
       var f = {task: $('#f-task').value.trim(), job: $('#f-job').value.trim(), area: $('#f-area').value.trim()};
       if (!f.task) return toast('Type the task first');
@@ -894,12 +903,14 @@
         var temp = Object.assign({id: 'new-' + uid(), added: todayStr(), status: 'Not Started', owner: m.name, entity: 'E10K', priority: 'Medium'}, f);
         S.data.tasks.push(temp);
         enqueue('task.create', {fields: f, tempId: temp.id});
+        if (window.E10K.remSave) window.E10K.remSave(temp.id);
         var oth = (f.owners || []).filter(function (x) { return x !== m.name; });
         toast(oth.length ? 'Sent to ' + oth.join(', ') : 'Added');
       } else {
         Object.assign(t, f);
         if (f.status === 'Done' && !t.completed) t.completed = todayStr();
         enqueue('task.update', {id: t.id, fields: f});
+        if (window.E10K.remSave) window.E10K.remSave(t.id);
         toast('Saved');
       }
       save(); closeSheet(); render();
@@ -1411,7 +1422,7 @@
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me, idb: idb, mach: mach,
     options: options, to12: to12, nowHM: nowHM, sinceTxt: sinceTxt, flush: flush, syncBadge: syncBadge,
-    seenBadge: seenBadge, addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
+    seenBadge: seenBadge, authInfo: function () { return {api: API, token: TOKEN}; }, addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();

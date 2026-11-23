@@ -502,13 +502,14 @@
       '<div style="flex:1"><label>Billing</label><select id="fb-bl">' + A.options(L.billing, 'Contract') + '</select></div></div>' +
       '<label>Paid yet?</label><div class="chips"><button class="chip on" data-fbp="No">Still to pay</button><button class="chip" data-fbp="Yes">Already paid</button></div>' +
       '<div id="fb-paid" style="display:none"><label>Check # or how</label><input id="fb-h"></div>' +
+      '<div id="fb-due"><label>Due date <span class="sub">(optional \u2013 you both get a reminder the day before)</span></label><input type="date" id="fb-dd"></div>' +
       '<label>Photo or PDF of the bill</label><input type="file" id="fb-f" accept="image/*,application/pdf"><div class="sub" id="fb-fs"></div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="go">Save bill</button></div>', function (a) {
       if (a !== 'go') return A.closeSheet();
       var paid = document.querySelector('[data-fbp].on').getAttribute('data-fbp');
       var f = {job: $('#fb-j').value, vendor: $('#fb-v').value.trim(), desc: $('#fb-d').value.trim(), amount: $('#fb-a').value.trim(), date: A.isoToUs($('#fb-dt').value) || A.todayStr(),
         invNo: $('#fb-n').value.trim(), category: $('#fb-c').value, type: $('#fb-t').value, billing: $('#fb-bl').value, paid: paid, how: $('#fb-h').value.trim(), clientId: A.uid()};
-      if (paid === 'Yes') f.paidDate = f.date;
+      if (paid === 'Yes') f.paidDate = f.date; else if ($('#fb-dd').value) f.due = $('#fb-dd').value;
       if (!f.job) return toast('Pick the job'); if (!f.vendor) return toast('Type the vendor'); if (!f.amount) return toast('Type the amount');
       if (file) f.file = file;
       A.closeSheet(); toast('Saving\u2026');
@@ -518,6 +519,7 @@
       var b = e.target.closest('[data-fbp]'); if (!b) return; e.stopPropagation();
       Array.prototype.forEach.call(document.querySelectorAll('[data-fbp]'), function (x) { x.classList.toggle('on', x === b); });
       $('#fb-paid').style.display = b.getAttribute('data-fbp') === 'Yes' ? 'block' : 'none';
+      $('#fb-due').style.display = b.getAttribute('data-fbp') === 'Yes' ? 'none' : 'block';
     };
     $('#fb-f').onchange = function (e) {
       var f0 = e.target.files[0]; if (!f0) return;
