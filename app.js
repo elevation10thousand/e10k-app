@@ -369,8 +369,11 @@
     var t = [{k: 'mine', ic: ICONS.check, n: 'My Tasks'}];
     t.push({k: 'all', ic: ICONS.list, n: me().owner ? 'All Open' : 'Job Tasks'});
     t.push({k: 'hours', ic: ICONS.clock, n: 'Hours'});
-    t.push({k: 'walks', ic: ICONS.mtn, n: 'Walks'});
-    t.splice.apply(t, [3, 0].concat(EXTRA_TABS.filter(function (x) { return !x.show || x.show(); })));
+    // Walks tab moved into each job page on the Jobs tab (Spencer 11/22); renderWalks stays for old saved tabs only
+    var ex = EXTRA_TABS.filter(function (x) { return !x.show || x.show(); });
+    var first = ex.filter(function (x) { return x.first; }), rest = ex.filter(function (x) { return !x.first; });
+    t.splice.apply(t, [2, 0].concat(first));   // Jobs right after the task lists (11/22)
+    t.splice.apply(t, [3 + first.length, 0].concat(rest));
     return t;
   }
 
@@ -860,9 +863,9 @@
       return '<option ' + (o === cur ? 'selected' : '') + '>' + esc(o) + '</option>'; }).join('');
   }
 
-  function taskForm(t) {
+  function taskForm(t, preset) {
     var m = me(), L = S.data.lists || {}, isNew = !t;
-    t = t || {entity: 'E10K', owner: m.name, priority: 'Medium', status: 'Not Started'};
+    t = t || Object.assign({entity: 'E10K', owner: m.name, priority: 'Medium', status: 'Not Started'}, preset || {});
     var jobs = S.data.jobs.map(function (j) { return j.name; });
     var html = '<h2>' + (isNew ? 'New task' : 'Edit task') + '</h2>' +
       (isNew && m.owner && window.E10K.meetingForm ? '<button class="btn" data-act="meeting" style="width:100%;margin-bottom:6px">\ud83d\udcc5 It\u2019s a meeting \u2013 put it on the calendar</button>' : '') +
@@ -1295,10 +1298,10 @@
     });
   }
 
-  function walkForm() {
+  function walkForm(preJob) {
     var jobs = S.data.jobs.map(function (j) { return j.name; }), photos = [];
     var html = '<h2>New walkthrough</h2>' +
-      '<label>Job</label><select id="w-job">' + options(jobs, ls.get('lastJob', ''), true) + '</select>' +
+      '<label>Job</label><select id="w-job">' + options(jobs, preJob || ls.get('lastJob', ''), true) + '</select>' +
       '<label>Tell me about it</label><textarea id="w-sum" rows="7" placeholder="Tap 🎤 and just talk: what you saw and what needs done. Sam pulls out the to-do list and makes the tasks."></textarea>' +
       '<label>Photos</label><input type="file" id="w-ph" accept="image/*" multiple><div class="photos" id="w-prev"></div>' +
       '<div class="btns"><button class="btn" data-act="x">Cancel</button><button class="btn primary" data-act="save">Save</button></div>';
@@ -1373,7 +1376,7 @@
   // (closes a pop-up, leaves a machine page, returns to the previous tab) instead of leaving the app.
   var sheetEntry = false, skipPop = 0;
   function navState() { return {e10k: 1, tab: S.tab, machine: window.E10K && window.E10K.curMachine ? window.E10K.curMachine() : null,
-    inv: window.E10K && window.E10K.curInv ? window.E10K.curInv() : null}; }
+    inv: window.E10K && window.E10K.curInv ? window.E10K.curInv() : null, job: window.E10K && window.E10K.curJob ? window.E10K.curJob() : null}; }
   function navPush() { try { history.pushState(navState(), ''); } catch (e) {} }
   try { history.replaceState(navState(), ''); } catch (e) {}
   window.addEventListener('popstate', function (e) {
@@ -1386,6 +1389,7 @@
     if (st.tab) { S.tab = st.tab; ls.set('tab', S.tab); }
     if (window.E10K && window.E10K.setMachine) window.E10K.setMachine(st.machine || null);
     if (window.E10K && window.E10K.setInv) window.E10K.setInv(st.inv || null);
+    if (window.E10K && window.E10K.setJob) window.E10K.setJob(st.job || null);
     window.scrollTo(0, 0);
     if (changed) { S.chip = 'All'; S.filter = ''; }
     render();
@@ -1462,7 +1466,8 @@
     $: $, esc: esc, ls: ls, toast: toast, api: api, S: S, enqueue: enqueue, sheet: sheet, closeSheet: closeSheet,
     shrink: shrink, uid: uid, todayStr: todayStr, usToIso: usToIso, isoToUs: isoToUs, svg: svg, me: me, idb: idb, mach: mach,
     options: options, to12: to12, nowHM: nowHM, sinceTxt: sinceTxt, flush: flush, syncBadge: syncBadge,
-    seenBadge: seenBadge, jobPicker: jobPicker, authInfo: function () { return {api: API, token: TOKEN}; }, addTab: function (t) { EXTRA_TABS.push(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
+    seenBadge: seenBadge, jobPicker: jobPicker, authInfo: function () { return {api: API, token: TOKEN}; }, addTab: function (t) { if (t.first) EXTRA_TABS.unshift(t); else EXTRA_TABS.push(t); }, openTask: function (id) { openTask(id); }, newTask: function (preset) { taskForm(null, preset); }, walkForm: function (job) { walkForm(job); }, walkDetail: function (w) { walkDetail(w); },
+    loadWalks: function () { return api('walk.list').then(function (r) { if (r.ok && !S.walks.some(function (w) { return w.pending; })) { S.walks = r.walks; save(); } return S.walks; }); }, taskCard: function (t) { return taskCard(t); }, save: save, render: render, renderFlags: renderFlags, shortD: shortD, FLAGS: FLAGS, navPush: navPush
   };
   document.addEventListener('DOMContentLoaded', function () {
     render(); syncBadge();
