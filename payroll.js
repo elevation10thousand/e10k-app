@@ -19,7 +19,8 @@
     return A.api(action, {fields: fields}).then(function (r) {
       P.busy = false;
       if (!r.ok) { toast({nothing_owed: 'Nothing owed through that date', bad_date: 'Check the date', already_billed: 'That entry is on a sent invoice \u2013 its times are locked',
-        already_paid: 'Already paid \u2013 change the times instead of deleting', unknown_job: 'Pick a job from the list', bad_time: 'Check the start and end time'}[r.error] || r.error); throw r; }
+        already_paid: 'Already paid \u2013 change the times instead of deleting', unknown_job: 'Pick a job from the list', bad_time: 'Check the start and end time',
+        imported_entry: 'That entry came from the old hours sheet \u2013 ask Sam to fix it in the Hub', sheet_history: 'That\u2019s pay history from the old hours sheets \u2013 ask Sam to change it'}[r.error] || r.error); throw r; }
       P.d = r; A.ls.set('pay', r); A.render(); return r;
     }, function (e) { P.busy = false; toast('Could not reach the server \u2013 try again'); throw e; });
   }
