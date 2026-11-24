@@ -671,7 +671,7 @@
       return !q || (t.task + ' ' + t.job + ' ' + t.area + ' ' + t.notes + ' ' + t.owner).toLowerCase().indexOf(q) >= 0;
     });
     var mode = ls.get('taskView', 'job');
-    var html = (S.tab === 'mine' ? briefingCard() + alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
+    var html = (S.tab === 'mine' ? briefingCard() + (window.E10K && window.E10K.draftsCard ? window.E10K.draftsCard() : '') + alertsBanner() : '') + '<input class="search" id="q" placeholder="Search tasks" value="' + esc(S.filter) + '">';
     if (onJobs) html += '<div class="tl-hint" data-gojobs style="cursor:pointer">\ud83d\udccb ' + onJobs + ' to-do' + (onJobs > 1 ? 's are' : ' is') + ' inside job sections \u2192 <u>Jobs tab</u></div>';
     html += '<div class="tl-seg"><button class="' + (mode === 'job' ? 'on' : '') + '" data-tlview="job">By job</button><button class="' + (mode === 'when' ? 'on' : '') + '" data-tlview="when">By when</button></div>';
     if (names.length > 1) html += '<div class="chips">' + ['All'].concat(names).map(function (c) {
@@ -772,6 +772,7 @@
     if (/^BID-/.test(id)) { if (window.E10K.openBid) window.E10K.openBid(id.slice(4)); return; }
     if (/^ASKSAM/.test(id)) { if (window.E10K.openAsk) window.E10K.openAsk({person: id.slice(7) || me().name}); return; }
     if (id === 'BRIEFING' || id === 'briefing') return openBriefing();
+    if (/^DRAFT/.test(id)) { if (window.E10K.openDrafts) window.E10K.openDrafts(id.slice(6)); return; }   // Sam Drafts (11/23)
     var t = findTask(id); if (!t) return;
     var m = me();
     if (isNewFor(t)) { markSeen(t); setTimeout(render, 0); }
