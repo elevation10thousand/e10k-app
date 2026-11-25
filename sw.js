@@ -3,8 +3,8 @@
 // Data calls (script.google.com) are never cached here; the app keeps its own copy.
 // Strategy (11/06): files with ?v=N never change -> straight from the cache. The page itself (index.html / ./ and
 // the Planes page) -> the saved copy if the network takes more than 2.5 s, refreshed in the background.
-var CACHE = 'e10k-shell-v79';
-var SHELL = ['./', 'index.html', 'app.css?v=29', 'app.js?v=52', 'equip.js?v=24', 'mcost.js?v=1', 'supplies.js?v=13', 'leads.js?v=17', 'fuel.js?v=2', 'chat.js?v=3', 'ask.js?v=2', 'drafts.js?v=1', 'invoice.js?v=1', 'finance.js?v=8', 'jobfin.js?v=7', 'bidpdf.js?v=1', 'bids.js?v=1', 'payroll.js?v=3', 'logo-invoice.png', 'mic.js?v=2', 'weather.js?v=5', 'mlog.js?v=3', 'reminders.js?v=2', 'jobs.js?v=5', 'manifest.webmanifest',
+var CACHE = 'e10k-shell-v80';
+var SHELL = ['./', 'index.html', 'app.css?v=29', 'app.js?v=53', 'equip.js?v=24', 'mcost.js?v=1', 'supplies.js?v=13', 'leads.js?v=17', 'fuel.js?v=2', 'chat.js?v=3', 'ask.js?v=2', 'drafts.js?v=1', 'invoice.js?v=1', 'finance.js?v=8', 'jobfin.js?v=7', 'bidpdf.js?v=1', 'bids.js?v=1', 'payroll.js?v=3', 'logo-invoice.png', 'mic.js?v=2', 'weather.js?v=5', 'mlog.js?v=3', 'reminders.js?v=2', 'jobs.js?v=5', 'manifest.webmanifest',
   'logo-word.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'favicon.png', 'badge-72.png'];
 
 self.addEventListener('install', function (e) {

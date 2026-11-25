@@ -1084,7 +1084,7 @@
       if (act !== 'save') return closeSheet();
       var f = {date: isoToUs($('#h-date').value), job: $('#h-job').value, start: to12($('#h-start').value), end: to12($('#h-end').value),
         work: $('#h-work').value.trim(), machines: []};
-      if (m.owner) f.person = $('#h-person').value;
+      if (m.owner && $('#h-person')) f.person = $('#h-person').value;   // no Who picker on clock-out
       if (!f.job) return toast('Pick the job');
       if (f.job === 'Shop / Yard' && $('#h-wo') && $('#h-wo').value) f.workedOn = $('#h-wo').value;
       var ce = $('#h-cat');
